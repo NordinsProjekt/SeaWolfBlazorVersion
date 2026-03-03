@@ -11,7 +11,7 @@
 <PageTitle>Sea Wolf</PageTitle>
 
 <div id="game-container">
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <canvas id="gameCanvas" width="1280" height="720"></canvas>
 </div>
 
 @code {
@@ -116,6 +116,7 @@
     {
         _engine.State.MouseX = (float)x;
         _engine.State.MouseY = (float)y;
+        _engine.State.SelectedTube = _engine.ComputeAimedTube((float)x, (float)y);
     }
 
     [JSInvokable]
@@ -131,7 +132,7 @@
 
         if (_engine.State.Status == GameStatus.Playing)
         {
-            _engine.FireTorpedo();
+            _engine.FireTorpedoFromTube(_engine.State.SelectedTube);
             await AudioService.PlayTorpedoAsync();
         }
     }
@@ -145,7 +146,7 @@
             return;
         }
 
-        if (key == " ")
+        if (key == " " || key == "Enter")
         {
             if (_engine.State.Status == GameStatus.StartScreen ||
                 _engine.State.Status == GameStatus.GameOver)
@@ -154,16 +155,23 @@
                 _engine.StartGame();
                 return;
             }
-
-            _engine.FireTorpedo();
-            await AudioService.PlayTorpedoAsync();
         }
 
-        if (key == "Enter" && (_engine.State.Status == GameStatus.StartScreen ||
-                               _engine.State.Status == GameStatus.GameOver))
+        if (_engine.State.Status == GameStatus.Playing)
         {
-            _engine.State.HighScore = await HighScoreService.LoadAsync();
-            _engine.StartGame();
+            switch (key)
+            {
+                case "ArrowLeft":
+                    _engine.State.SelectedTube = Math.Max(0, _engine.State.SelectedTube - 1);
+                    break;
+                case "ArrowRight":
+                    _engine.State.SelectedTube = Math.Min(4, _engine.State.SelectedTube + 1);
+                    break;
+                case " ":
+                    _engine.FireTorpedoFromTube(_engine.State.SelectedTube);
+                    await AudioService.PlayTorpedoAsync();
+                    break;
+            }
         }
     }
 

@@ -5,6 +5,10 @@ window.SeaWolfRenderer = (() => {
     let boatImage  = null;
     let boatSprite  = null; // cropped + fringe-cleaned offscreen canvas
     let cargoSprite = null; // dedicated cargo-ship sprite
+    let cruiserSprite = null; // dedicated cruiser sprite
+    let fishingSprite = null; // dedicated fishing-boat sprite
+    let tankerSprite  = null; // dedicated oil-tanker sprite
+    let carrierSprite = null; // dedicated aircraft-carrier sprite
 
     // ── Colour palette ──────────────────────────────────────────────────────
     const COLORS = {
@@ -58,6 +62,26 @@ window.SeaWolfRenderer = (() => {
             const cargoImg = new Image();
             cargoImg.onload = () => { cargoSprite = _prepareSprite(cargoImg, 820); };
             cargoImg.src = 'images/cargo.png';
+
+            // Cruiser sprite — 1536×1024, hull y≈450–750, dark ocean bg removed.
+            const cruiserImg = new Image();
+            cruiserImg.onload = () => { cruiserSprite = _prepareSprite(cruiserImg, 800, true); };
+            cruiserImg.src = 'images/cruiser.png';
+
+            // Fishing-boat sprite — 1536×1024, cabin y≈480, hull y≈820–870.
+            const fishingImg = new Image();
+            fishingImg.onload = () => { fishingSprite = _prepareSprite(fishingImg, 900, true); };
+            fishingImg.src = 'images/fishing.png';
+
+            // Oil-tanker sprite — 1536×1024, hull y≈400–700, dark ocean bg removed.
+            const tankerImg = new Image();
+            tankerImg.onload = () => { tankerSprite = _prepareSprite(tankerImg, 750, true); };
+            tankerImg.src = 'images/tanker.png';
+
+            // Aircraft-carrier sprite — 1536×1024, hull y≈750, dark ocean bg removed.
+            const carrierImg = new Image();
+            carrierImg.onload = () => { carrierSprite = _prepareSprite(carrierImg, 790, true); };
+            carrierImg.src = 'images/carrier.png';
         },
 
         renderFrame(stateJson) {
@@ -93,7 +117,7 @@ window.SeaWolfRenderer = (() => {
 
             // Fixed-position UI (no shake)
             if (s.floatingTexts) s.floatingTexts.forEach(ft => this._drawFloatingText(ft));
-            this._drawCrosshair(s.mouseX, s.mouseY);
+            this._drawTubeSpread(s);
             this._drawPeriscopeVignette();
             this._drawHUD(s);
 
@@ -115,13 +139,17 @@ window.SeaWolfRenderer = (() => {
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Horizon position scales proportionally with canvas height
+            const scaleY   = canvas.height / 600;
+            const horizonY = Math.round(276 * scaleY);
+
             // Dark water fill below horizon — makes ocean zone distinct
             ctx.fillStyle = 'rgba(0, 20, 55, 0.55)';
-            ctx.fillRect(0, 278, canvas.width, canvas.height - 278);
+            ctx.fillRect(0, horizonY + 2, canvas.width, canvas.height - horizonY - 2);
 
             // Animated ocean surface waves — 14 rows for dense water texture
             for (let row = 0; row < 14; row++) {
-                const y = 272 + row * 22;
+                const y = (horizonY - 4) + row * (22 * scaleY);
                 const alpha = 0.15 + (row / 14) * 0.45;
                 const blue  = Math.max(60, 160 - row * 8);
                 ctx.strokeStyle = `rgba(0,${blue},200,${alpha})`;
@@ -140,8 +168,8 @@ window.SeaWolfRenderer = (() => {
             ctx.strokeStyle = 'rgba(0,200,255,0.20)';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(0, 276);
-            ctx.lineTo(canvas.width, 276);
+            ctx.moveTo(0, horizonY);
+            ctx.lineTo(canvas.width, horizonY);
             ctx.stroke();
         },
 
@@ -164,19 +192,24 @@ window.SeaWolfRenderer = (() => {
             const w = ship.width, h = ship.height;
             const type = ship.type ? ship.type.toLowerCase() : 'destroyer';
 
-            // Cargo ships get their dedicated sprite; destroyer & PT boat share boatSprite
-            const sprite = (type === 'cargo' && cargoSprite) ? cargoSprite : boatSprite;
+            // Cargo → dedicated sprite; Cruiser → dedicated sprite; FishingBoat → dedicated sprite; Tanker → dedicated sprite; others → boatSprite
+            const sprite = type === 'cargo'       && cargoSprite   ? cargoSprite   :
+                           type === 'cruiser'     && cruiserSprite ? cruiserSprite :
+                           type === 'fishingboat' && fishingSprite ? fishingSprite :
+                           type === 'tanker'      && tankerSprite  ? tankerSprite  :
+                           type === 'carrier'     && carrierSprite ? carrierSprite :
+                           boatSprite;
 
             if (sprite) {
                 const drawH = w * (sprite.height / sprite.width);
                 ctx.drawImage(sprite, -w / 2, -drawH / 2, w, drawH);
 
-                // Destroyer/PT boat get a colour tint to stay distinct;
-                // cargo uses its natural Copilot-generated colours.
-                if (type !== 'cargo') {
+                // All non-cargo, non-fishing, non-tanker types get a colour tint to stay distinct.
+                if (type !== 'cargo' && type !== 'fishingboat' && type !== 'tanker' && type !== 'carrier') {
                     const tints = {
                         destroyer: 'rgba(60,100,180,0.28)',
                         ptboat:    'rgba(40,120,40, 0.28)',
+                        cruiser:   'rgba(150,70,50, 0.25)',
                     };
                     ctx.globalCompositeOperation = 'source-atop';
                     ctx.fillStyle = tints[type] ?? 'rgba(60,100,180,0.28)';
@@ -383,24 +416,27 @@ window.SeaWolfRenderer = (() => {
         // ── Torpedo ───────────────────────────────────────────────────────────
 
         _drawTorpedo(t) {
+            const angle = Math.atan2(t.vx ?? 0, -(t.vy ?? -8));
             ctx.save();
+            ctx.translate(t.x, t.y);
+            ctx.rotate(angle);
             ctx.fillStyle = COLORS.torpedo;
             ctx.shadowColor = COLORS.torpedo;
             ctx.shadowBlur = 6;
-            // Nose
+            // Nose points in direction of travel (local negative-Y)
             ctx.beginPath();
-            ctx.moveTo(t.x, t.y - t.height / 2);
-            ctx.lineTo(t.x - t.width / 2, t.y + t.height / 2);
-            ctx.lineTo(t.x + t.width / 2, t.y + t.height / 2);
+            ctx.moveTo(0, -t.height / 2);
+            ctx.lineTo(-t.width / 2, t.height / 2);
+            ctx.lineTo(t.width / 2, t.height / 2);
             ctx.closePath();
             ctx.fill();
-            // Bubble trail
+            // Bubble trail (behind torpedo)
             ctx.shadowBlur = 0;
             ctx.fillStyle = 'rgba(200,255,255,0.3)';
             for (let i = 1; i <= 4; i++) {
                 ctx.beginPath();
-                ctx.arc(t.x + (Math.random() - 0.5) * 4,
-                        t.y + t.height / 2 + i * 5,
+                ctx.arc((Math.random() - 0.5) * 4,
+                        t.height / 2 + i * 5,
                         2 - i * 0.3, 0, Math.PI * 2);
                 ctx.fill();
             }
@@ -437,30 +473,78 @@ window.SeaWolfRenderer = (() => {
             ctx.restore();
         },
 
-        // ── Crosshair ─────────────────────────────────────────────────────────
+        // ── Torpedo tube spread ───────────────────────────────────────────────
 
-        _drawCrosshair(mx, my) {
-            const size = 20;
+        _drawTubeSpread(s) {
+            const TUBE_ANGLES_DEG = [-55, -25, 0, 25, 55];
+            const LAUNCH_Y = 680;
+            const LINE_LEN = 530;
+            const aimX    = canvas.width / 2;
+            const selected = s.selectedTube ?? 2;
+
             ctx.save();
+
+            // Draw each tube line
+            TUBE_ANGLES_DEG.forEach((angleDeg, i) => {
+                const rad  = angleDeg * Math.PI / 180;
+                const endX = aimX + Math.sin(rad) * LINE_LEN;
+                const endY = LAUNCH_Y - Math.cos(rad) * LINE_LEN;
+                const isActive = i === selected;
+
+                ctx.beginPath();
+                ctx.moveTo(aimX, LAUNCH_Y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle  = isActive ? COLORS.crosshair : COLORS.hudDim;
+                ctx.lineWidth    = isActive ? 1.5 : 1;
+                ctx.globalAlpha  = isActive ? 0.85 : 0.35;
+                ctx.shadowColor  = isActive ? COLORS.crosshair : 'transparent';
+                ctx.shadowBlur   = isActive ? 5 : 0;
+                ctx.setLineDash(isActive ? [] : [6, 5]);
+                ctx.stroke();
+            });
+
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur  = 0;
+
+            // Launch-origin crossmark
+            ctx.strokeStyle = COLORS.hud;
+            ctx.lineWidth   = 2;
+            ctx.shadowColor = COLORS.hud;
+            ctx.shadowBlur  = 8;
+            ctx.beginPath();
+            ctx.moveTo(aimX - 18, LAUNCH_Y);
+            ctx.lineTo(aimX + 18, LAUNCH_Y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(aimX, LAUNCH_Y - 12);
+            ctx.lineTo(aimX, LAUNCH_Y + 6);
+            ctx.stroke();
+
+            // Aim indicator — small crosshair where active tube meets ship zone (y ≈ 420)
+            const aRad   = TUBE_ANGLES_DEG[selected] * Math.PI / 180;
+            const targetY = 420;
+            const dist    = (LAUNCH_Y - targetY) / Math.cos(aRad);
+            const targetX = aimX + Math.sin(aRad) * dist;
+            const sz = 11;
+
             ctx.strokeStyle = COLORS.crosshair;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth   = 1.5;
             ctx.shadowColor = COLORS.crosshair;
-            ctx.shadowBlur = 4;
-            // Horizontal
+            ctx.shadowBlur  = 7;
             ctx.beginPath();
-            ctx.moveTo(mx - size, my);
-            ctx.lineTo(mx + size, my);
+            ctx.moveTo(targetX - sz, targetY);
+            ctx.lineTo(targetX + sz, targetY);
             ctx.stroke();
-            // Vertical
             ctx.beginPath();
-            ctx.moveTo(mx, my - size);
-            ctx.lineTo(mx, my + size);
+            ctx.moveTo(targetX, targetY - sz);
+            ctx.lineTo(targetX, targetY + sz);
             ctx.stroke();
-            // Centre dot
             ctx.beginPath();
-            ctx.arc(mx, my, 2, 0, Math.PI * 2);
+            ctx.arc(targetX, targetY, 3, 0, Math.PI * 2);
             ctx.fillStyle = COLORS.crosshair;
             ctx.fill();
+
             ctx.restore();
         },
 
@@ -468,7 +552,7 @@ window.SeaWolfRenderer = (() => {
 
         _drawPeriscopeVignette() {
             const cx = canvas.width / 2, cy = canvas.height / 2;
-            const r  = canvas.width * 0.52;
+            const r  = canvas.height / 1.44;
             const grad = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r * 1.1);
             grad.addColorStop(0, 'rgba(0,0,0,0)');
             grad.addColorStop(1, 'rgba(0,0,0,0.88)');
@@ -613,8 +697,8 @@ window.SeaWolfRenderer = (() => {
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#888';
             ctx.font = '13px "Courier New", monospace';
-            ctx.fillText('CLICK or SPACE to fire torpedoes  |  P to pause', cx, cy + 20);
-            ctx.fillText('Cargo ships take two hits to sink', cx, cy + 40);
+            ctx.fillText('Move mouse to aim along a tube line  |  CLICK or SPACE to fire', cx, cy + 20);
+            ctx.fillText('← → Arrow keys pan aim  |  P to pause', cx, cy + 40);
             ctx.fillText('Chain kills to build a COMBO multiplier', cx, cy + 60);
 
             // Blink prompt

@@ -49,6 +49,18 @@ public static class DifficultyManager
         pool.AddRange(Enumerable.Repeat(ShipType.Destroyer, 5));
         pool.AddRange(Enumerable.Repeat(ShipType.Cargo, 3));
         pool.AddRange(Enumerable.Repeat(ShipType.PtBoat, 2 + wave.ExtraPtBoatWeight));
+        // Cruisers start appearing at wave 3; frequency caps at 4 per pool
+        if (wave.WaveNumber >= 3)
+            pool.AddRange(Enumerable.Repeat(ShipType.Cruiser, Math.Min(wave.WaveNumber - 2, 4)));
+        // Fishing boats: easy targets common in early waves, gone by wave 6
+        if (wave.WaveNumber <= 5)
+            pool.AddRange(Enumerable.Repeat(ShipType.FishingBoat, Math.Max(1, 5 - wave.WaveNumber)));
+        // Tankers: rare high-value targets from wave 2, capped at 3 per pool
+        if (wave.WaveNumber >= 2)
+            pool.AddRange(Enumerable.Repeat(ShipType.Tanker, Math.Min(wave.WaveNumber / 2, 3)));
+        // Carriers: very rare, appear from wave 5, capped at 2 per pool
+        if (wave.WaveNumber >= 5)
+            pool.AddRange(Enumerable.Repeat(ShipType.Carrier, Math.Min((wave.WaveNumber - 4) / 2, 2)));
         return pool[Random.Shared.Next(pool.Count)];
     }
 }

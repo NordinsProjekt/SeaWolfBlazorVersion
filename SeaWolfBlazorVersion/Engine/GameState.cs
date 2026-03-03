@@ -37,6 +37,10 @@ public class GameState
     public float MouseX { get; set; } = 400;
     public float MouseY { get; set; } = 300;
 
+    // Torpedo tube aim
+    public float AimX { get; set; } = 640f;
+    public int SelectedTube { get; set; } = 2; // 0 = far-left … 4 = far-right
+
     // Wave clear bonus display
     public float WaveBonusDisplayTimer { get; set; }
     public int LastWaveBonus { get; set; }

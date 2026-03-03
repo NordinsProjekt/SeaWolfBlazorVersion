@@ -66,7 +66,7 @@ public class GameEngine
                 ship.X += ship.CurrentSpeed * ship.Direction;
             }
 
-            bool escaped = ship.Direction == 1 ? ship.X > 900 : ship.X < -ship.Width;
+            bool escaped = ship.Direction == 1 ? ship.X > 1380 : ship.X < -ship.Width;
             if (escaped && ship.DamageState != ShipDamageState.Sinking)
             {
                 ship.Active = false;
@@ -90,8 +90,9 @@ public class GameEngine
         // Update torpedoes
         foreach (var t in State.Torpedoes)
         {
-            t.Y -= t.Speed;
-            if (t.Y < -50) t.Active = false;
+            t.X += t.Vx;
+            t.Y += t.Vy;
+            if (t.Y < -50 || t.X < -50 || t.X > 1380) t.Active = false;
         }
         State.Torpedoes.RemoveAll(t => !t.Active);
 
@@ -191,12 +192,32 @@ public class GameEngine
 
     // Input handlers called by Game.razor
 
-    public void FireTorpedo()
+    private static readonly float[] TubeAngles = [-55f, -25f, 0f, 25f, 55f];
+    private const float LaunchY = 680f;
+
+    private const float LaunchX = 640f;
+
+    public int ComputeAimedTube(float mouseX, float mouseY)
+    {
+        // Divide the 1280-px canvas into 5 equal zones (256 px each)
+        const float zoneWidth = 1280f / 5f;
+        return Math.Clamp((int)(mouseX / zoneWidth), 0, 4);
+    }
+
+    public void FireTorpedoFromTube(int tubeIndex)
     {
         if (State.Status != GameStatus.Playing) return;
         if (State.TorpedoCount <= 0 || State.IsReloading) return;
 
-        State.Torpedoes.Add(new Torpedo { X = State.MouseX, Y = 550 });
+        float angleRad = TubeAngles[Math.Clamp(tubeIndex, 0, 4)] * MathF.PI / 180f;
+        const float speed = 8f;
+        State.Torpedoes.Add(new Torpedo
+        {
+            X  = LaunchX,
+            Y  = LaunchY,
+            Vx = MathF.Sin(angleRad) * speed,
+            Vy = -MathF.Cos(angleRad) * speed
+        });
         State.TorpedoCount--;
         State.TorpedosFired++;
 
@@ -236,6 +257,8 @@ public class GameEngine
         State.ComboCount = 0;
         State.ComboTimer = 0;
         State.ShakeTimer = 0;
+        State.AimX = 640f;
+        State.SelectedTube = 2;
         State.Status = GameStatus.Playing;
     }
 }

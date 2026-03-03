@@ -53,8 +53,8 @@ public static class CollisionDetector
                     SpawnLargeExplosion(state, ship.X, ship.Y);
                     SpawnScoreText(state, ship.X, ship.Y, pts, mult);
 
-                    // Cargo kill: 30% chance to drop a bonus torpedo
-                    if (ship.Type == ShipType.Cargo
+                    // Cargo / Cruiser / Tanker kill: 30% chance to drop a bonus torpedo
+                    if ((ship.Type == ShipType.Cargo || ship.Type == ShipType.Cruiser || ship.Type == ShipType.Tanker || ship.Type == ShipType.Carrier)
                         && Random.Shared.NextSingle() < 0.30f
                         && state.TorpedoCount < GameState.MaxTorpedoes)
                     {

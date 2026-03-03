@@ -43,8 +43,8 @@ public class Ship
 
     public static Ship Create(ShipType type, float difficultyMultiplier, int direction = 1)
     {
-        float startX(int width) => direction == 1 ? -width : 900 + width;
-        float y = 295 + Random.Shared.NextSingle() * 110;
+        float startX(int width) => direction == 1 ? -width : 1380 + width;
+        float y = 354 + Random.Shared.NextSingle() * 132;
 
         return type switch
         {
@@ -67,6 +67,37 @@ public class Ship
                 Type = type, X = startX(160), Y = y,
                 BaseSpeed = 1.0f * difficultyMultiplier,
                 Width = 160, Height = 55, BasePoints = 150,
+                RequiresTwoHits = true,
+                Direction = direction
+            },
+            ShipType.Cruiser => new Ship
+            {
+                Type = type, X = startX(155), Y = y,
+                BaseSpeed = 1.2f * difficultyMultiplier,
+                Width = 155, Height = 52, BasePoints = 300,
+                RequiresTwoHits = true,
+                Direction = direction
+            },
+            ShipType.FishingBoat => new Ship
+            {
+                Type = type, X = startX(95), Y = y,
+                BaseSpeed = 0.7f * difficultyMultiplier,
+                Width = 95, Height = 32, BasePoints = 75,
+                Direction = direction
+            },
+            ShipType.Tanker => new Ship
+            {
+                Type = type, X = startX(185), Y = y,
+                BaseSpeed = 0.6f * difficultyMultiplier,
+                Width = 185, Height = 60, BasePoints = 400,
+                RequiresTwoHits = true,
+                Direction = direction
+            },
+            ShipType.Carrier => new Ship
+            {
+                Type = type, X = startX(220), Y = y,
+                BaseSpeed = 0.45f * difficultyMultiplier,
+                Width = 220, Height = 68, BasePoints = 700,
                 RequiresTwoHits = true,
                 Direction = direction
             },

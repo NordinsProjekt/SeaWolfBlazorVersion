@@ -18,6 +18,8 @@ window.SeaWolfInput = {
         });
 
         document.addEventListener('keydown', e => {
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key))
+                e.preventDefault();
             this._dotnet.invokeMethodAsync('OnKeyDown', e.key);
         });
     }
