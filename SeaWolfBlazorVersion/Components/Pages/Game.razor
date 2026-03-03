@@ -1,0 +1,179 @@
+@page "/"
+@layout GameLayout
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject IJSRuntime JS
+@inject HighScoreService HighScoreService
+@inject AudioService AudioService
+
+<PageTitle>Sea Wolf</PageTitle>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+
+@code {
+    private readonly GameEngine _engine = new();
+    private System.Timers.Timer? _gameLoopTimer;
+    private DotNetObjectReference<Game>? _dotNetRef;
+    private DateTime _lastFrameTime;
+    private bool _initialized;
+
+    // Last known damage state per ship for audio triggers
+    private readonly Dictionary<Guid, ShipDamageState> _lastDamageStates = new();
+    private int _lastShipsSunk;
+    private GameStatus _prevStatus = GameStatus.StartScreen;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+        _initialized = true;
+
+        _engine.State.HighScore = await HighScoreService.LoadAsync();
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("SeaWolfRenderer.init", "gameCanvas");
+        await JS.InvokeVoidAsync("SeaWolfInput.init", _dotNetRef, "gameCanvas");
+
+        _lastFrameTime = DateTime.UtcNow;
+        _gameLoopTimer = new System.Timers.Timer(16);
+        _gameLoopTimer.Elapsed += OnTimerTick;
+        _gameLoopTimer.AutoReset = true;
+        _gameLoopTimer.Start();
+    }
+
+    private async void OnTimerTick(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        await InvokeAsync(async () =>
+        {
+            var now = DateTime.UtcNow;
+            float dt = (float)(now - _lastFrameTime).TotalSeconds;
+            _lastFrameTime = now;
+            dt = Math.Clamp(dt, 0f, 0.1f);
+
+            _engine.Update(dt);
+
+            // Detect game over transition → save high score once
+            var newStatus = _engine.State.Status;
+            if (_prevStatus != GameStatus.GameOver && newStatus == GameStatus.GameOver)
+            {
+                var score = _engine.State.Score;
+                if (score > _engine.State.HighScore)
+                {
+                    _engine.State.HighScore = score;
+                    await HighScoreService.SaveAsync(score);
+                }
+            }
+            _prevStatus = newStatus;
+
+            await CheckAudioTriggers();
+
+            var json = JsonSerializer.Serialize(_engine.State, _jsonOptions);
+            await JS.InvokeVoidAsync("SeaWolfRenderer.renderFrame", json);
+        });
+    }
+
+    private async Task CheckAudioTriggers()
+    {
+        foreach (var ship in _engine.State.Ships)
+        {
+            if (_lastDamageStates.TryGetValue(ship.Id, out var prev))
+            {
+                if (prev != ship.DamageState)
+                {
+                    if (ship.DamageState == ShipDamageState.Burning)
+                        await AudioService.PlaySmallExplosionAsync();
+                    else if (ship.DamageState == ShipDamageState.Sinking)
+                        await AudioService.PlayLargeExplosionAsync();
+                }
+            }
+            _lastDamageStates[ship.Id] = ship.DamageState;
+        }
+
+        // Clean up stale ids
+        var activeIds = _engine.State.Ships.Select(s => s.Id).ToHashSet();
+        foreach (var key in _lastDamageStates.Keys.Where(k => !activeIds.Contains(k)).ToList())
+            _lastDamageStates.Remove(key);
+
+        // Wave clear audio
+        if (_engine.State.Status == GameStatus.WaveClear && _lastShipsSunk != _engine.State.ShipsSunkThisWave)
+        {
+            _lastShipsSunk = _engine.State.ShipsSunkThisWave;
+            await AudioService.PlayWaveClearAsync();
+        }
+    }
+
+    [JSInvokable]
+    public void OnMouseMove(double x, double y)
+    {
+        _engine.State.MouseX = (float)x;
+        _engine.State.MouseY = (float)y;
+    }
+
+    [JSInvokable]
+    public async Task OnClick(double x, double y)
+    {
+        if (_engine.State.Status == GameStatus.StartScreen ||
+            _engine.State.Status == GameStatus.GameOver)
+        {
+            _engine.State.HighScore = await HighScoreService.LoadAsync();
+            _engine.StartGame();
+            return;
+        }
+
+        if (_engine.State.Status == GameStatus.Playing)
+        {
+            _engine.FireTorpedo();
+            await AudioService.PlayTorpedoAsync();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnKeyDown(string key)
+    {
+        if (key == "p" || key == "P")
+        {
+            _engine.TogglePause();
+            return;
+        }
+
+        if (key == " ")
+        {
+            if (_engine.State.Status == GameStatus.StartScreen ||
+                _engine.State.Status == GameStatus.GameOver)
+            {
+                _engine.State.HighScore = await HighScoreService.LoadAsync();
+                _engine.StartGame();
+                return;
+            }
+
+            _engine.FireTorpedo();
+            await AudioService.PlayTorpedoAsync();
+        }
+
+        if (key == "Enter" && (_engine.State.Status == GameStatus.StartScreen ||
+                               _engine.State.Status == GameStatus.GameOver))
+        {
+            _engine.State.HighScore = await HighScoreService.LoadAsync();
+            _engine.StartGame();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _gameLoopTimer?.Stop();
+        _gameLoopTimer?.Dispose();
+        _dotNetRef?.Dispose();
+
+        if (_engine.State.Score > 0)
+            await HighScoreService.SaveAsync(Math.Max(_engine.State.Score, _engine.State.HighScore));
+    }
+}
