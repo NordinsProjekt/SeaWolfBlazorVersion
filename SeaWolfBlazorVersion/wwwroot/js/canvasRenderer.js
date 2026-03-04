@@ -10,6 +10,12 @@ window.SeaWolfRenderer = (() => {
     let tankerSprite  = null; // dedicated oil-tanker sprite
     let carrierSprite = null; // dedicated aircraft-carrier sprite
 
+    // ── Screen images ───────────────────────────────────────────────────────
+    let startScreenImage = null;
+    const victoryImages  = [];          // loaded victory images
+    let _victoryImageIdx  = 0;          // which image is shown this wave-clear
+    let _lastVictoryWave  = -1;         // tracks when to pick a new image
+
     // ── Colour palette ──────────────────────────────────────────────────────
     const COLORS = {
         destroyer:   { hull: '#3a4a5c', super: '#2e3d4e', accent: '#c0c0c0' },
@@ -50,6 +56,17 @@ window.SeaWolfRenderer = (() => {
         init(canvasId) {
             canvas = document.getElementById(canvasId);
             ctx = canvas.getContext('2d');
+
+            // Start screen background
+            startScreenImage = new Image();
+            startScreenImage.src = 'images/Startscreen/MainPage.png';
+
+            // Victory images (cycled/randomised between waves)
+            ['Victory1', 'Victory2', 'Victory3', 'victory4'].forEach(name => {
+                const img = new Image();
+                img.src = `images/Victory/${name}.png`;
+                victoryImages.push(img);
+            });
 
             // General boat sprite (destroyer & PT boat) — crop row 640+
             // to remove the embedded ocean backdrop.
@@ -110,7 +127,8 @@ window.SeaWolfRenderer = (() => {
                 const mag = s.shakeTimer * 10;
                 ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
             }
-            s.ships.forEach(ship => this._drawShip(ship));
+            // Sort back-to-front so far-lane (small, high Y) ships render under near-lane ships
+            [...s.ships].sort((a, b) => a.y - b.y).forEach(ship => this._drawShip(ship));
             s.torpedoes.forEach(t => this._drawTorpedo(t));
             s.explosions.forEach(ex => this._drawExplosion(ex));
             ctx.restore();
@@ -121,8 +139,18 @@ window.SeaWolfRenderer = (() => {
             this._drawPeriscopeVignette();
             this._drawHUD(s);
 
-            if (s.status === 'WaveClear')
+            if (s.status === 'WaveClear') {
+                // Pick a new random victory image once per wave transition
+                if (s.wave !== _lastVictoryWave && victoryImages.length > 0) {
+                    _lastVictoryWave = s.wave;
+                    // Exclude the previous index so we never see the same image twice in a row
+                    let next;
+                    do { next = Math.floor(Math.random() * victoryImages.length); }
+                    while (victoryImages.length > 1 && next === _victoryImageIdx);
+                    _victoryImageIdx = next;
+                }
                 this._drawWaveClear(s.wave, s.lastWaveBonus, s.waveClearTimer, s.lastAccuracy, s.accuracyBonus);
+            }
             if (s.status === 'Paused')
                 this._drawPaused();
         },
@@ -179,6 +207,7 @@ window.SeaWolfRenderer = (() => {
             const sinkProgress = ship.damageState === 'Sinking'
                 ? Math.min(ship.sinkTimer / 1.5, 1)
                 : 0;
+            const depthScale = ship.depthScale ?? 1.0;
 
             ctx.save();
             ctx.translate(ship.x, ship.y);
@@ -186,7 +215,9 @@ window.SeaWolfRenderer = (() => {
             if ((ship.direction ?? 1) === -1) ctx.scale(-1, 1);
             if (sinkProgress > 0) {
                 ctx.rotate(sinkProgress * 0.4);
-                ctx.globalAlpha = 1 - sinkProgress * 0.6;
+                ctx.globalAlpha = (depthScale < 1.0 ? 0.82 : 1.0) * (1 - sinkProgress * 0.6);
+            } else if (depthScale < 1.0) {
+                ctx.globalAlpha = 0.82;
             }
 
             const w = ship.width, h = ship.height;
@@ -218,6 +249,14 @@ window.SeaWolfRenderer = (() => {
                 }
 
                 if (ship.damageState === 'Burning') this._drawBurnDamage(w, drawH);
+
+                // Atmospheric distance haze — blue-grey wash for far-lane ships
+                if (depthScale < 1.0) {
+                    ctx.globalCompositeOperation = 'source-atop';
+                    ctx.fillStyle = `rgba(100, 150, 210, ${(1 - depthScale) * 0.45})`;
+                    ctx.fillRect(-w / 2, -drawH / 2, w, drawH);
+                    ctx.globalCompositeOperation = 'source-over';
+                }
             } else {
                 // Vector fallback while sprites load
                 if (type === 'destroyer')   this._drawDestroyer(w, h, ship.damageState);
@@ -681,6 +720,24 @@ window.SeaWolfRenderer = (() => {
             const cx = canvas.width / 2, cy = canvas.height / 2;
             ctx.save();
 
+            // Background image (cover-fit)
+            if (startScreenImage && startScreenImage.complete && startScreenImage.naturalWidth > 0) {
+                const imgAr  = startScreenImage.naturalWidth / startScreenImage.naturalHeight;
+                const canAr  = canvas.width / canvas.height;
+                let sw, sh, sx, sy;
+                if (imgAr > canAr) {
+                    sh = canvas.height; sw = sh * imgAr;
+                    sx = (canvas.width - sw) / 2; sy = 0;
+                } else {
+                    sw = canvas.width; sh = sw / imgAr;
+                    sx = 0; sy = (canvas.height - sh) / 2;
+                }
+                ctx.drawImage(startScreenImage, sx, sy, sw, sh);
+                // Dark overlay so text stays readable
+                ctx.fillStyle = 'rgba(0,0,0,0.52)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
             // Title
             ctx.textAlign = 'center';
             ctx.shadowColor = '#00FF00';
@@ -758,16 +815,41 @@ window.SeaWolfRenderer = (() => {
             const cx = canvas.width / 2, cy = canvas.height / 2;
             ctx.save();
             ctx.globalAlpha = alpha;
+
+            // Victory image — centred, letterboxed, max 55% of canvas height
+            const vImg = victoryImages[_victoryImageIdx];
+            if (vImg && vImg.complete && vImg.naturalWidth > 0) {
+                const maxH  = canvas.height * 0.55;
+                const maxW  = canvas.width  * 0.75;
+                const scale = Math.min(maxW / vImg.naturalWidth, maxH / vImg.naturalHeight);
+                const dw = vImg.naturalWidth  * scale;
+                const dh = vImg.naturalHeight * scale;
+                const dx = cx - dw / 2;
+                const dy = cy - dh / 2 - 20;   // shift slightly up to leave room for text below
+
+                // Subtle dark frame behind image
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(dx - 8, dy - 8, dw + 16, dh + 16);
+                ctx.drawImage(vImg, dx, dy, dw, dh);
+
+                // Green border
+                ctx.strokeStyle = 'rgba(0,255,0,0.55)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(dx - 2, dy - 2, dw + 4, dh + 4);
+            }
+
+            // Overlay text below (or over) the image
+            const textY = cy + (canvas.height * 0.34);
             ctx.textAlign = 'center';
             ctx.shadowColor = '#00FF00';
             ctx.shadowBlur = 18;
             ctx.fillStyle = '#00FF00';
             ctx.font = 'bold 36px "Courier New", monospace';
-            ctx.fillText(`WAVE ${wave} CLEAR!`, cx, cy - 30);
+            ctx.fillText(`WAVE ${wave} CLEAR!`, cx, textY);
             ctx.font = 'bold 20px "Courier New", monospace';
             ctx.fillStyle = '#FFD700';
             ctx.shadowColor = '#FFD700';
-            ctx.fillText(`+${bonus} pts`, cx, cy + 10);
+            ctx.fillText(`+${bonus} pts`, cx, textY + 38);
             if (accuracy != null && accuracy > 0) {
                 const aBonusStr = accuracyBonus > 0 ? `  +${accuracyBonus} ACCURACY BONUS` : '';
                 const aColor = accuracy >= 80 ? '#00FF88' : accuracy >= 60 ? '#FFD700' : '#888';
@@ -775,7 +857,7 @@ window.SeaWolfRenderer = (() => {
                 ctx.fillStyle = aColor;
                 ctx.shadowColor = aColor;
                 ctx.shadowBlur = 6;
-                ctx.fillText(`ACCURACY ${accuracy}%${aBonusStr}`, cx, cy + 36);
+                ctx.fillText(`ACCURACY ${accuracy}%${aBonusStr}`, cx, textY + 64);
             }
             ctx.restore();
         },

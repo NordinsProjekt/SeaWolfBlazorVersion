@@ -30,6 +30,8 @@ public class Ship
 
     // 1 = spawns left, moves right  |  -1 = spawns right, moves left
     public int Direction { get; init; } = 1;
+    // 1.0 = near lane (default); 0.55 = far lane (small, near horizon, harder to hit)
+    public float DepthScale { get; init; } = 1.0f;
 
     // Returns points for this hit (partial or kill)
     public int HitPoints => (int)(BasePoints * 0.30f);
@@ -41,65 +43,76 @@ public class Ship
             && MathF.Abs(torpY - Y) < Height / 2f;
     }
 
-    public static Ship Create(ShipType type, float difficultyMultiplier, int direction = 1)
+    public static Ship Create(ShipType type, float difficultyMultiplier, int direction = 1, bool farLane = false)
     {
+        float depthScale = farLane ? 0.55f : 1.0f;
+        float pointsScale = farLane ? 1.8f : 1.0f;
         float startX(int width) => direction == 1 ? -width : 1380 + width;
-        float y = 354 + Random.Shared.NextSingle() * 132;
+        float y = farLane
+            ? 335f + Random.Shared.NextSingle() * 30f
+            : 354f + Random.Shared.NextSingle() * 132f;
 
         return type switch
         {
             ShipType.Destroyer => new Ship
             {
-                Type = type, X = startX(130), Y = y,
+                Type = type, X = startX((int)(130 * depthScale)), Y = y,
                 BaseSpeed = 1.5f * difficultyMultiplier,
-                Width = 130, Height = 45, BasePoints = 100,
-                Direction = direction
+                Width = (int)(130 * depthScale), Height = (int)(45 * depthScale),
+                BasePoints = (int)(100 * pointsScale),
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.PtBoat => new Ship
             {
-                Type = type, X = startX(90), Y = y,
+                Type = type, X = startX((int)(90 * depthScale)), Y = y,
                 BaseSpeed = 3.0f * difficultyMultiplier,
-                Width = 90, Height = 30, BasePoints = 200,
-                Direction = direction
+                Width = (int)(90 * depthScale), Height = (int)(30 * depthScale),
+                BasePoints = (int)(200 * pointsScale),
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.Cargo => new Ship
             {
-                Type = type, X = startX(160), Y = y,
+                Type = type, X = startX((int)(160 * depthScale)), Y = y,
                 BaseSpeed = 1.0f * difficultyMultiplier,
-                Width = 160, Height = 55, BasePoints = 150,
+                Width = (int)(160 * depthScale), Height = (int)(55 * depthScale),
+                BasePoints = (int)(150 * pointsScale),
                 RequiresTwoHits = true,
-                Direction = direction
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.Cruiser => new Ship
             {
-                Type = type, X = startX(155), Y = y,
+                Type = type, X = startX((int)(155 * depthScale)), Y = y,
                 BaseSpeed = 1.2f * difficultyMultiplier,
-                Width = 155, Height = 52, BasePoints = 300,
+                Width = (int)(155 * depthScale), Height = (int)(52 * depthScale),
+                BasePoints = (int)(300 * pointsScale),
                 RequiresTwoHits = true,
-                Direction = direction
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.FishingBoat => new Ship
             {
-                Type = type, X = startX(95), Y = y,
+                Type = type, X = startX((int)(95 * depthScale)), Y = y,
                 BaseSpeed = 0.7f * difficultyMultiplier,
-                Width = 95, Height = 32, BasePoints = 75,
-                Direction = direction
+                Width = (int)(95 * depthScale), Height = (int)(32 * depthScale),
+                BasePoints = (int)(75 * pointsScale),
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.Tanker => new Ship
             {
-                Type = type, X = startX(185), Y = y,
+                Type = type, X = startX((int)(185 * depthScale)), Y = y,
                 BaseSpeed = 0.6f * difficultyMultiplier,
-                Width = 185, Height = 60, BasePoints = 400,
+                Width = (int)(185 * depthScale), Height = (int)(60 * depthScale),
+                BasePoints = (int)(400 * pointsScale),
                 RequiresTwoHits = true,
-                Direction = direction
+                DepthScale = depthScale, Direction = direction
             },
             ShipType.Carrier => new Ship
             {
-                Type = type, X = startX(220), Y = y,
+                Type = type, X = startX((int)(220 * depthScale)), Y = y,
                 BaseSpeed = 0.45f * difficultyMultiplier,
-                Width = 220, Height = 68, BasePoints = 700,
+                Width = (int)(220 * depthScale), Height = (int)(68 * depthScale),
+                BasePoints = (int)(700 * pointsScale),
                 RequiresTwoHits = true,
-                Direction = direction
+                DepthScale = depthScale, Direction = direction
             },
             _ => throw new ArgumentOutOfRangeException(nameof(type))
         };

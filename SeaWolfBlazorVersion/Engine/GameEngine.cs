@@ -46,7 +46,9 @@ public class GameEngine
         {
             var type = DifficultyManager.PickShipType(wave);
             var direction = Random.Shared.NextSingle() > 0.5f ? 1 : -1;
-            State.Ships.Add(Ship.Create(type, wave.SpeedMultiplier, direction));
+            bool farLane = wave.WaveNumber >= 3
+                && Random.Shared.NextSingle() < MathF.Min(0.05f * (wave.WaveNumber - 2), 0.40f);
+            State.Ships.Add(Ship.Create(type, wave.SpeedMultiplier, direction, farLane));
             State.ShipsSpawnedThisWave++;
             State.SpawnTimer = 0;
         }
@@ -178,7 +180,7 @@ public class GameEngine
                 Vx   = (Random.Shared.NextSingle() - 0.5f) * 20f,
                 Vy   = -(30f + Random.Shared.NextSingle() * 40f),
                 Life = 0.8f + Random.Shared.NextSingle() * 0.4f,
-                Size = 4f + Random.Shared.NextSingle() * 6f
+                Size = (4f + Random.Shared.NextSingle() * 6f) * ship.DepthScale
             });
         }
         foreach (var p in ship.FireParticles)
