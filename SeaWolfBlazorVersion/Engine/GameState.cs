@@ -11,8 +11,8 @@ public class GameState
     public int Wave { get; set; } = 1;
 
     // Torpedo management
-    public int TorpedoCount { get; set; } = 5;
-    public const int MaxTorpedoes = 5;
+    public int TorpedoCount { get; set; } = 2;
+    public const int MaxTorpedoes = 2;
     public bool IsReloading { get; set; }
     public float ReloadTimer { get; set; }
     public const float ReloadDuration = 2f;

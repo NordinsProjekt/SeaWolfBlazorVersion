@@ -158,7 +158,7 @@ public class GameEngine
             State.Wave++;
             State.ShipsSpawnedThisWave = 0;
             State.ShipsSunkThisWave = 0;
-            State.SpawnTimer = 0;
+            State.SpawnTimer = DifficultyManager.GetWave(State.Wave).SpawnIntervalSeconds;
             State.TorpedoCount = GameState.MaxTorpedoes;
             State.IsReloading = false;
             State.TorpedosFired = 0;
@@ -248,7 +248,7 @@ public class GameEngine
         State.IsReloading = false;
         State.ShipsSpawnedThisWave = 0;
         State.ShipsSunkThisWave = 0;
-        State.SpawnTimer = 0;
+        State.SpawnTimer = DifficultyManager.GetWave(1).SpawnIntervalSeconds;
         State.Ships.Clear();
         State.Torpedoes.Clear();
         State.Explosions.Clear();

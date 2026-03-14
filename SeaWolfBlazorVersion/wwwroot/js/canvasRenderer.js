@@ -649,7 +649,7 @@ window.SeaWolfRenderer = (() => {
             ctx.textAlign = 'right';
             ctx.font = '12px "Courier New", monospace';
             ctx.fillText('TORPEDOES', canvas.width - 18, 18);
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 2; i++) {
                 const x = canvas.width - 18 - i * 20;
                 const y = 28;
                 ctx.beginPath();
