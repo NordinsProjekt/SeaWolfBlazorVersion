@@ -25,6 +25,7 @@
     private readonly Dictionary<Guid, ShipDamageState> _lastDamageStates = new();
     private int _lastShipsSunk;
     private GameStatus _prevStatus = GameStatus.StartScreen;
+    private bool _wasReloading;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -71,6 +72,7 @@
                     _engine.State.HighScore = score;
                     await HighScoreService.SaveAsync(score);
                 }
+                await AudioService.PlayGameOverAsync();
             }
             _prevStatus = newStatus;
 
@@ -103,6 +105,11 @@
         foreach (var key in _lastDamageStates.Keys.Where(k => !activeIds.Contains(k)).ToList())
             _lastDamageStates.Remove(key);
 
+        // Reload complete
+        if (_wasReloading && !_engine.State.IsReloading)
+            await AudioService.PlayReloadCompleteAsync();
+        _wasReloading = _engine.State.IsReloading;
+
         // Wave clear audio
         if (_engine.State.Status == GameStatus.WaveClear && _lastShipsSunk != _engine.State.ShipsSunkThisWave)
         {
@@ -132,8 +139,8 @@
 
         if (_engine.State.Status == GameStatus.Playing)
         {
-            _engine.FireTorpedoFromTube(_engine.State.SelectedTube);
-            await AudioService.PlayTorpedoAsync();
+            if (_engine.FireTorpedoFromTube(_engine.State.SelectedTube))
+                await AudioService.PlayTorpedoAsync();
         }
     }
 
@@ -168,8 +175,8 @@
                     _engine.State.SelectedTube = Math.Min(4, _engine.State.SelectedTube + 1);
                     break;
                 case " ":
-                    _engine.FireTorpedoFromTube(_engine.State.SelectedTube);
-                    await AudioService.PlayTorpedoAsync();
+                    if (_engine.FireTorpedoFromTube(_engine.State.SelectedTube))
+                        await AudioService.PlayTorpedoAsync();
                     break;
             }
         }

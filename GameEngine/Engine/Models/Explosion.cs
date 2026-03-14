@@ -1,4 +1,4 @@
-namespace SeaWolfBlazorVersion.Engine.Models;
+namespace GameEngine.Engine.Models;
 
 public class Explosion
 {

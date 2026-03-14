@@ -1,7 +1,7 @@
-using SeaWolfBlazorVersion.Engine.Models;
-using SeaWolfBlazorVersion.Engine.Models.Enums;
+using GameEngine.Engine.Models;
+using GameEngine.Engine.Models.Enums;
 
-namespace SeaWolfBlazorVersion.Engine;
+namespace GameEngine.Engine;
 
 public class GameState
 {
@@ -15,7 +15,7 @@ public class GameState
     public const int MaxTorpedoes = 2;
     public bool IsReloading { get; set; }
     public float ReloadTimer { get; set; }
-    public const float ReloadDuration = 2f;
+    public const float ReloadDuration = 4f;
 
     // Wave management
     public int ShipsSpawnedThisWave { get; set; }
@@ -56,8 +56,22 @@ public class GameState
     public int LastAccuracy { get; set; }   // 0-100
     public int AccuracyBonus { get; set; }
 
+    // Per-game totals (survive across wave resets, cleared only on StartGame)
+    public int TotalTorpedosFired { get; set; }
+    public int TotalTorpedosHit { get; set; }
+    public int TotalShipsSunk { get; set; }
+
     // Screen shake (seconds remaining)
     public float ShakeTimer { get; set; }
+
+    // Wave start banner — seconds elapsed since the current wave entered Playing state
+    public float WaveStartTimer { get; set; }
+
+    // Total ships in the current wave (set by GameEngine, serialised for JS HUD)
+    public int WaveTotalShips { get; set; }
+
+    // Serialisable alias for the reload-duration constant (const fields don't serialise)
+    public float ReloadDurationValue => ReloadDuration;
 
     // Floating score pop-ups
     public List<FloatingText> FloatingTexts { get; } = new();

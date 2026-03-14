@@ -1,7 +1,7 @@
-using SeaWolfBlazorVersion.Engine.Models;
-using SeaWolfBlazorVersion.Engine.Models.Enums;
+using GameEngine.Engine.Models;
+using GameEngine.Engine.Models.Enums;
 
-namespace SeaWolfBlazorVersion.Engine;
+namespace GameEngine.Engine;
 
 public class GameEngine
 {
@@ -19,18 +19,37 @@ public class GameEngine
     {
         var wave = DifficultyManager.GetWave(State.Wave);
 
-        // Combo timeout
+        TickTimers(dt);
+        TickFloatingTexts(dt);
+        TrySpawnShip(wave, dt);
+        UpdateShips(dt);
+
+        if (State.ShipsEscaped >= GameState.MaxEscaped)
+        {
+            State.Status = GameStatus.GameOver;
+            return;
+        }
+
+        UpdateTorpedoes();
+        UpdateReload(dt);
+        CollisionDetector.Detect(State);
+        UpdateExplosions(dt);
+        CheckWaveClear(wave);
+    }
+
+    private void TickTimers(float dt)
+    {
         if (State.ComboTimer > 0)
         {
             State.ComboTimer -= dt;
             if (State.ComboTimer <= 0) State.ComboCount = 0;
         }
+        if (State.WaveStartTimer < 2.5f) State.WaveStartTimer += dt;
+        if (State.ShakeTimer > 0) State.ShakeTimer = MathF.Max(0f, State.ShakeTimer - dt);
+    }
 
-        // Screen shake decay
-        if (State.ShakeTimer > 0)
-            State.ShakeTimer = MathF.Max(0f, State.ShakeTimer - dt);
-
-        // Floating text animation
+    private void TickFloatingTexts(float dt)
+    {
         foreach (var ft in State.FloatingTexts)
         {
             ft.Y -= 45f * dt;
@@ -38,58 +57,71 @@ public class GameEngine
             if (ft.Life <= 0) ft.Active = false;
         }
         State.FloatingTexts.RemoveAll(ft => !ft.Active);
+    }
 
-        // Spawn
+    private void TrySpawnShip(WaveConfig wave, float dt)
+    {
         State.SpawnTimer += dt;
-        if (State.SpawnTimer >= wave.SpawnIntervalSeconds
-            && State.ShipsSpawnedThisWave < wave.TotalShips)
-        {
-            var type = DifficultyManager.PickShipType(wave);
-            var direction = Random.Shared.NextSingle() > 0.5f ? 1 : -1;
-            bool farLane = wave.WaveNumber >= 3
-                && Random.Shared.NextSingle() < MathF.Min(0.05f * (wave.WaveNumber - 2), 0.40f);
-            State.Ships.Add(Ship.Create(type, wave.SpeedMultiplier, direction, farLane));
-            State.ShipsSpawnedThisWave++;
-            State.SpawnTimer = 0;
-        }
+        if (State.SpawnTimer < wave.SpawnIntervalSeconds) return;
+        if (State.ShipsSpawnedThisWave >= wave.TotalShips) return;
 
-        // Update ships
+        var type      = DifficultyManager.PickShipType(wave);
+        var direction = Random.Shared.NextSingle() > 0.5f ? 1 : -1;
+        bool farLane  = wave.WaveNumber >= 3
+            && Random.Shared.NextSingle() < MathF.Min(0.05f * (wave.WaveNumber - 2), 0.40f);
+        State.Ships.Add(Ship.Create(type, wave.SpeedMultiplier, direction, farLane));
+        State.ShipsSpawnedThisWave++;
+        State.SpawnTimer = 0;
+    }
+
+    private void UpdateShips(float dt)
+    {
         foreach (var ship in State.Ships)
         {
-            if (ship.DamageState == ShipDamageState.Sinking)
-            {
-                ship.SinkTimer += dt;
-                ship.Y += 25f * dt;
-                if (ship.SinkTimer >= Ship.SinkDuration)
-                    ship.Active = false;
-            }
-            else
-            {
-                ship.X += ship.CurrentSpeed * ship.Direction;
-            }
-
-            bool escaped = ship.Direction == 1 ? ship.X > 1380 : ship.X < -ship.Width;
-            if (escaped && ship.DamageState != ShipDamageState.Sinking)
-            {
-                ship.Active = false;
-                State.ShipsEscaped++;
-                State.ComboCount = 0;
-                State.ComboTimer = 0;
-            }
-
-            if (ship.DamageState == ShipDamageState.Burning)
-                UpdateFireParticles(ship, dt);
+            AdvanceShip(ship, dt);
+            if (HasEscaped(ship)) HandleEscape(ship);
+            if (ship.DamageState == ShipDamageState.Burning) UpdateFireParticles(ship, dt);
         }
         State.Ships.RemoveAll(s => !s.Active);
+    }
 
-        // Game over if too many ships escaped
-        if (State.ShipsEscaped >= GameState.MaxEscaped)
+    private static void AdvanceShip(Ship ship, float dt)
+    {
+        if (ship.DamageState == ShipDamageState.Sinking)
         {
-            State.Status = GameStatus.GameOver;
-            return;
+            ship.SinkTimer += dt;
+            ship.Y += 25f * dt;
+            if (ship.SinkTimer >= Ship.SinkDuration) ship.Active = false;
         }
+        else
+        {
+            ship.X += ship.CurrentSpeed * ship.Direction;
+        }
+    }
 
-        // Update torpedoes
+    private static bool HasEscaped(Ship ship) =>
+        ship.DamageState != ShipDamageState.Sinking &&
+        (ship.Direction == 1 ? ship.X > 1380 : ship.X < -ship.Width);
+
+    private void HandleEscape(Ship ship)
+    {
+        ship.Active = false;
+        State.ShipsEscaped++;
+        State.ComboCount = 0;
+        State.ComboTimer = 0;
+        State.FloatingTexts.Add(new FloatingText
+        {
+            X       = ship.Direction == 1 ? 1150f : 130f,
+            Y       = ship.Y - 20f,
+            Text    = "ESCAPED!",
+            Color   = "#FF2200",
+            Life    = 2.0f,
+            MaxLife = 2.0f
+        });
+    }
+
+    private void UpdateTorpedoes()
+    {
         foreach (var t in State.Torpedoes)
         {
             t.X += t.Vx;
@@ -97,57 +129,57 @@ public class GameEngine
             if (t.Y < -50 || t.X < -50 || t.X > 1380) t.Active = false;
         }
         State.Torpedoes.RemoveAll(t => !t.Active);
+    }
 
-        // Reload
-        if (State.IsReloading)
+    private void UpdateReload(float dt)
+    {
+        if (!State.IsReloading) return;
+        State.ReloadTimer += dt;
+        if (State.ReloadTimer >= GameState.ReloadDuration)
         {
-            State.ReloadTimer += dt;
-            if (State.ReloadTimer >= GameState.ReloadDuration)
-            {
-                State.TorpedoCount = GameState.MaxTorpedoes;
-                State.IsReloading = false;
-                State.ReloadTimer = 0;
-            }
+            State.TorpedoCount = GameState.MaxTorpedoes;
+            State.IsReloading  = false;
+            State.ReloadTimer  = 0;
         }
+    }
 
-        // Collisions
-        CollisionDetector.Detect(State);
-
-        // Update explosions
+    private void UpdateExplosions(float dt)
+    {
         foreach (var ex in State.Explosions)
         {
-            ex.Radius += 60f * dt;
+            ex.Radius  += 60f  * dt;
             ex.Opacity -= 1.5f * dt;
             foreach (var spark in ex.Sparks)
             {
-                spark.X += spark.Vx * dt;
-                spark.Y += spark.Vy * dt;
-                spark.Vy += 80f * dt; // gravity
+                spark.X    += spark.Vx * dt;
+                spark.Y    += spark.Vy * dt;
+                spark.Vy   += 80f * dt; // gravity
                 spark.Life -= dt;
             }
             ex.Sparks.RemoveAll(s => s.Life <= 0);
             if (ex.Radius >= ex.MaxRadius) ex.Active = false;
         }
         State.Explosions.RemoveAll(e => !e.Active);
+    }
 
-        // Wave clear check: all ships for this wave are gone (sunk or escaped)
-        if (State.ShipsSpawnedThisWave >= wave.TotalShips && State.Ships.Count == 0)
+    private void CheckWaveClear(WaveConfig wave)
+    {
+        if (State.ShipsSpawnedThisWave < wave.TotalShips || State.Ships.Count > 0) return;
+
+        State.LastAccuracy = State.TorpedosFired > 0
+            ? (int)(100f * State.TorpedosHit / State.TorpedosFired)
+            : 0;
+        State.AccuracyBonus = State.LastAccuracy switch
         {
-            State.LastAccuracy = State.TorpedosFired > 0
-                ? (int)(100f * State.TorpedosHit / State.TorpedosFired)
-                : 0;
-            State.AccuracyBonus = State.LastAccuracy switch
-            {
-                >= 80 => wave.WaveBonusPoints / 2,
-                >= 60 => wave.WaveBonusPoints / 4,
-                _     => 0
-            };
-            State.Score += wave.WaveBonusPoints + State.AccuracyBonus;
-            State.LastWaveBonus = wave.WaveBonusPoints;
-            State.WaveBonusDisplayTimer = GameState.WaveClearPause;
-            State.Status = GameStatus.WaveClear;
-            State.WaveClearTimer = 0;
-        }
+            >= 80 => wave.WaveBonusPoints / 2,
+            >= 60 => wave.WaveBonusPoints / 4,
+            _     => 0
+        };
+        State.Score               += wave.WaveBonusPoints + State.AccuracyBonus;
+        State.LastWaveBonus        = wave.WaveBonusPoints;
+        State.WaveBonusDisplayTimer = GameState.WaveClearPause;
+        State.Status               = GameStatus.WaveClear;
+        State.WaveClearTimer       = 0;
     }
 
     private void UpdateWaveClear(float dt)
@@ -158,6 +190,7 @@ public class GameEngine
             State.Wave++;
             State.ShipsSpawnedThisWave = 0;
             State.ShipsSunkThisWave = 0;
+            State.WaveTotalShips = DifficultyManager.GetWave(State.Wave).TotalShips;
             State.SpawnTimer = DifficultyManager.GetWave(State.Wave).SpawnIntervalSeconds;
             State.TorpedoCount = GameState.MaxTorpedoes;
             State.IsReloading = false;
@@ -165,6 +198,7 @@ public class GameEngine
             State.TorpedosHit = 0;
             State.ComboCount = 0;
             State.ComboTimer = 0;
+            State.WaveStartTimer = 0;
             State.Status = GameStatus.Playing;
         }
     }
@@ -206,13 +240,13 @@ public class GameEngine
         return Math.Clamp((int)(mouseX / zoneWidth), 0, 4);
     }
 
-    public void FireTorpedoFromTube(int tubeIndex)
+    public bool FireTorpedoFromTube(int tubeIndex)
     {
-        if (State.Status != GameStatus.Playing) return;
-        if (State.TorpedoCount <= 0 || State.IsReloading) return;
+        if (State.Status != GameStatus.Playing) return false;
+        if (State.TorpedoCount <= 0 || State.IsReloading) return false;
 
         float angleRad = TubeAngles[Math.Clamp(tubeIndex, 0, 4)] * MathF.PI / 180f;
-        const float speed = 8f;
+        const float speed = 5f;
         State.Torpedoes.Add(new Torpedo
         {
             X  = LaunchX,
@@ -222,12 +256,15 @@ public class GameEngine
         });
         State.TorpedoCount--;
         State.TorpedosFired++;
+        State.TotalTorpedosFired++;
 
         if (State.TorpedoCount == 0)
         {
             State.IsReloading = true;
             State.ReloadTimer = 0;
         }
+
+        return true;
     }
 
     public void TogglePause()
@@ -256,11 +293,16 @@ public class GameEngine
         State.ShipsEscaped = 0;
         State.TorpedosFired = 0;
         State.TorpedosHit = 0;
+        State.TotalTorpedosFired = 0;
+        State.TotalTorpedosHit = 0;
+        State.TotalShipsSunk = 0;
         State.ComboCount = 0;
         State.ComboTimer = 0;
         State.ShakeTimer = 0;
+        State.WaveStartTimer = 0;
         State.AimX = 640f;
         State.SelectedTube = 2;
+        State.WaveTotalShips = DifficultyManager.GetWave(1).TotalShips;
         State.Status = GameStatus.Playing;
     }
 }

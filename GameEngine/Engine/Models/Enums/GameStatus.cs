@@ -1,4 +1,4 @@
-namespace SeaWolfBlazorVersion.Engine.Models.Enums;
+namespace GameEngine.Engine.Models.Enums;
 
 public enum GameStatus
 {

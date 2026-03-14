@@ -1,6 +1,6 @@
-using SeaWolfBlazorVersion.Engine.Models.Enums;
+using GameEngine.Engine.Models.Enums;
 
-namespace SeaWolfBlazorVersion.Engine;
+namespace GameEngine.Engine;
 
 public record WaveConfig(
     int WaveNumber,

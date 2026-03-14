@@ -1,3 +1,11 @@
 <Solution>
-  <Project Path="SeaWolfBlazorVersion/SeaWolfBlazorVersion.csproj" />
+  <Folder Name="/1. Backend/">
+    <Project Path="GameEngine/GameEngine.csproj" Id="f663651d-a7a0-4844-81d3-d2c7a56c2a55" />
+  </Folder>
+  <Folder Name="/2. Frontend/">
+    <Project Path="SeaWolfBlazorVersion/SeaWolfBlazorVersion.csproj" />
+  </Folder>
+  <Folder Name="/3. Tests/">
+    <Project Path="GameEngineTests/GameEngineTests.csproj" Id="e6577356-7c5b-4325-874a-60549294c5ac" />
+  </Folder>
 </Solution>
