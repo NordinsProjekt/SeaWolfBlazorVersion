@@ -21,7 +21,8 @@ window.SeaWolfRendererHUD = (() => {
                 ctx.fillText(`BEST: ${s.highScore}`, 18, 46);
             }
 
-            // Top-center: wave
+            // Top-center: wave (arcade only)
+            if (s.mode !== 'Campaign') {
             ctx.font = 'bold 18px "Courier New", monospace';
             ctx.fillStyle = COLORS.hud;
             ctx.textAlign = 'center';
@@ -37,6 +38,7 @@ window.SeaWolfRendererHUD = (() => {
                 ctx.fillStyle = remaining > 0 ? COLORS.hudDim : '#00FF88';
                 ctx.shadowBlur = 3;
                 ctx.fillText(`${remaining} SHIPS LEFT`, canvas.width / 2, 46);
+            }
             }
 
             // Combo multiplier badge
@@ -95,7 +97,8 @@ window.SeaWolfRendererHUD = (() => {
                 ctx.strokeRect(bx, by, barW, barH);
             }
 
-            // Bottom-left: escaped ships
+            // Bottom-left: escaped ships (arcade only)
+            if (s.mode !== 'Campaign') {
             const maxEsc = 5;
             const escaped = s.shipsEscaped || 0;
             ctx.shadowBlur = 0;
@@ -122,6 +125,7 @@ window.SeaWolfRendererHUD = (() => {
                     ctx.strokeRect(-3, -4, 6, 5);
                 }
                 ctx.restore();
+            }
             }
 
             ctx.restore();
@@ -229,6 +233,65 @@ window.SeaWolfRendererHUD = (() => {
             for (let sy = 0; sy < canvas.height; sy += 3) {
                 ctx.fillRect(0, sy, canvas.width, 1);
             }
+            ctx.restore();
+        },
+
+        drawCampaignHUD(core, s) {
+            const canvas = core.getCanvas();
+            const ctx    = core.getCtx();
+
+            const missions  = s.campaignMissions ?? [];
+            const mIdx      = (s.campaignMission ?? 1) - 1;
+            const mission   = missions[mIdx] ?? {};
+            const reqSinks  = mission.requiredSinks ?? 0;
+            const current   = s.campaignSinks ?? 0;
+            const lives     = s.campaignLives ?? 0;
+            const budget    = s.torpedoBudgetLeft ?? 0;
+            const hasBudget = (mission.torpedoBudget ?? 0) > 0;
+
+            ctx.save();
+            ctx.textAlign  = 'left';
+            ctx.shadowBlur = 0;
+
+            // Mission label (bottom-right area, above wave counter)
+            const rx = canvas.width - 18;
+            const baseY = canvas.height - 68;
+
+            ctx.textAlign   = 'right';
+            ctx.font = 'bold 11px "Courier New", monospace';
+            ctx.fillStyle   = '#FFD700';
+            ctx.fillText(`MISSION ${s.campaignMission ?? 1}`, rx, baseY);
+
+            // Objective progress bar
+            const barW = 160, barH = 7;
+            const bx   = rx - barW;
+            const by   = baseY + 6;
+            const ratio = reqSinks > 0 ? Math.min(current / reqSinks, 1) : 0;
+            const barColor = ratio >= 1 ? '#00FF88' : '#FFD700';
+
+            ctx.fillStyle = '#222';
+            ctx.fillRect(bx, by, barW, barH);
+            ctx.fillStyle = barColor;
+            ctx.fillRect(bx, by, barW * ratio, barH);
+            ctx.strokeStyle = barColor;
+            ctx.lineWidth   = 1;
+            ctx.strokeRect(bx, by, barW, barH);
+
+            ctx.font = '11px "Courier New", monospace';
+            ctx.fillStyle = '#aaa';
+            ctx.fillText(`OBJ: ${current}/${reqSinks}`, rx, by + barH + 12);
+
+            // Lives
+            const lifeY = by + barH + 28;
+            ctx.fillStyle = lives <= 1 ? '#FF2200' : '#aaffaa';
+            ctx.fillText(`LIVES: ${'♥'.repeat(Math.max(0, lives))}`, rx, lifeY);
+
+            // Torpedo budget
+            if (hasBudget) {
+                ctx.fillStyle = budget <= 2 ? '#FF6600' : '#aaffaa';
+                ctx.fillText(`TORP BUDGET: ${budget}`, rx, lifeY + 16);
+            }
+
             ctx.restore();
         }
     };

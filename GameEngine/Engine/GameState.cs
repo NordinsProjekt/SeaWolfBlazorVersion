@@ -6,6 +6,7 @@ namespace GameEngine.Engine;
 public class GameState
 {
     public GameStatus Status { get; set; } = GameStatus.StartScreen;
+    public GameMode   Mode   { get; set; } = GameMode.Arcade;
     public int Score { get; set; }
     public int HighScore { get; set; }
     public int Wave { get; set; } = 1;
@@ -21,7 +22,7 @@ public class GameState
     public int ShipsSpawnedThisWave { get; set; }
     public int ShipsSunkThisWave { get; set; }
     public int ShipsEscaped { get; set; }
-    public const int MaxEscaped = 5;           // game over threshold
+    public const int MaxEscaped = 5;           // game over threshold (arcade)
     public float WaveClearTimer { get; set; }
     public const float WaveClearPause = 3f;
 
@@ -73,6 +74,62 @@ public class GameState
     // Serialisable alias for the reload-duration constant (const fields don't serialise)
     public float ReloadDurationValue => ReloadDuration;
 
+    // Top-10 highscore list — populated by the Blazor host, read by JS renderer
+    public IReadOnlyList<HighScoreEntryDto> HighScoreList { get; set; } = [];
+
     // Floating score pop-ups
     public List<FloatingText> FloatingTexts { get; } = new();
+
+    // ── Campaign state ────────────────────────────────────────────────────────
+
+    public int  CampaignMission    { get; set; } = 1;
+    public int  CampaignLives      { get; set; } = 3;
+    public int  CampaignSinks      { get; set; }   // objective-type sinks this mission
+    public int  CivilianSinks      { get; set; }   // FishingBoat kills this mission
+    public int  TorpedoBudgetLeft  { get; set; }   // 0 = unlimited
+    public bool CampaignMissionFailed { get; set; }
+    public float MissionScreenTimer { get; set; }  // seconds on briefing/complete screen
+
+    // Per-type sink counts for objective tracking (serialised as a flat int[])
+    // Index order matches ShipType enum values (0–6)
+    public int[] SinksByType { get; set; } = new int[7];
+
+    public Dictionary<ShipType, int> SinksByTypeDict()
+    {
+        var d = new Dictionary<ShipType, int>();
+        for (int i = 0; i < SinksByType.Length; i++)
+            if (SinksByType[i] > 0)
+                d[(ShipType)i] = SinksByType[i];
+        return d;
+    }
+
+    /// <summary>
+    /// Serialised mission metadata for the JS renderer to display briefings.
+    /// </summary>
+    public IReadOnlyList<CampaignMissionInfo> CampaignMissions =>
+        CampaignManager.Missions.Select(m => new CampaignMissionInfo(
+            m.CodeName,
+            m.Briefing,
+            m.Objective.RequiredSinks,
+            m.Objective.TargetTypes.Select(t => t.ToString()).ToArray(),
+            m.Objective.MaxEscaped,
+            m.Objective.TorpedoBudget,
+            m.Objective.MaxCivilianSinks,
+            m.ShipsPerWave
+        )).ToList();
 }
+
+/// <summary>Flat DTO for JS serialisation of a mission config.</summary>
+public record CampaignMissionInfo(
+    string CodeName,
+    string Briefing,
+    int    RequiredSinks,
+    string[] TargetTypes,
+    int    MaxEscaped,
+    int    TorpedoBudget,
+    int    MaxCivilianSinks,
+    int    ShipsPerWave
+);
+
+/// <summary>Flat DTO for a single highscore entry serialised to JS.</summary>
+public record HighScoreEntryDto(string Name, int Score, string Mode);

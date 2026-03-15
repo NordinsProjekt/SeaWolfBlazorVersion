@@ -59,6 +59,7 @@ public static class CollisionDetector
             state.Score += pts;
             state.ShipsSunkThisWave++;
             state.TotalShipsSunk++;
+            TrackSinkByType(state, ship.Type);
             SpawnLargeExplosion(state, ship.X, ship.Y);
             SpawnScoreText(state, ship.X, ship.Y, pts, mult);
         }
@@ -72,9 +73,19 @@ public static class CollisionDetector
         state.Score += pts;
         state.ShipsSunkThisWave++;
         state.TotalShipsSunk++;
+        TrackSinkByType(state, ship.Type);
         SpawnLargeExplosion(state, ship.X, ship.Y);
         SpawnScoreText(state, ship.X, ship.Y, pts, mult);
         TryGrantBonusTorpedo(state, ship);
+    }
+
+    private static void TrackSinkByType(GameState state, ShipType type)
+    {
+        int idx = (int)type;
+        if (idx >= 0 && idx < state.SinksByType.Length)
+            state.SinksByType[idx]++;
+        if (type == ShipType.FishingBoat)
+            state.CivilianSinks++;
     }
 
     private static void TryGrantBonusTorpedo(GameState state, Ship ship)

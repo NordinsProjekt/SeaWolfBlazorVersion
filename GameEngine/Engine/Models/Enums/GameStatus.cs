@@ -4,7 +4,10 @@ public enum GameStatus
 {
     StartScreen,
     Playing,
-    WaveClear,   // brief inter-wave pause
+    WaveClear,          // brief inter-wave pause
     Paused,
-    GameOver
+    GameOver,
+    MissionBriefing,    // campaign: show mission brief before starting
+    MissionComplete,    // campaign: mission succeeded
+    CampaignComplete    // campaign: all missions finished
 }

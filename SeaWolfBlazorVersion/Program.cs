@@ -1,5 +1,5 @@
 using SeaWolfBlazorVersion.Components;
-using SeaWolfBlazorVersion.Services;
+using SeaWolfBlazorVersion.Client.Services;
 
 namespace SeaWolfBlazorVersion;
 
@@ -11,7 +11,7 @@ public class Program
 
         // Add services to the container.
         builder.Services.AddRazorComponents()
-            .AddInteractiveServerComponents();
+            .AddInteractiveWebAssemblyComponents();
 
         builder.Services.AddScoped<HighScoreService>();
         builder.Services.AddScoped<AudioService>();
@@ -33,7 +33,8 @@ public class Program
 
         app.MapStaticAssets();
         app.MapRazorComponents<App>()
-            .AddInteractiveServerRenderMode();
+            .AddInteractiveWebAssemblyRenderMode()
+            .AddAdditionalAssemblies(typeof(SeaWolfBlazorVersion.Client.Program).Assembly);
 
         app.Run();
     }

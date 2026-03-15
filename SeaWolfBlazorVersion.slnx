@@ -8,4 +8,7 @@
   <Folder Name="/3. Tests/">
     <Project Path="GameEngineTests/GameEngineTests.csproj" Id="e6577356-7c5b-4325-874a-60549294c5ac" />
   </Folder>
+  <Project Path="GameEngineE2ETests/GameEngineE2ETests.csproj" />
+  <Project Path="SeaWolfBlazorTests/SeaWolfBlazorTests.csproj" />
+  <Project Path="SeaWolfBlazorVersion.Client/SeaWolfBlazorVersion.Client.csproj" />
 </Solution>

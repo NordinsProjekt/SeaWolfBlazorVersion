@@ -29,13 +29,31 @@ window.SeaWolfRenderer = (() => {
             background.draw(core);
 
             if (s.status === 'StartScreen') {
-                screens.drawStartScreen(core);
+                screens.drawStartScreen(core, s);
                 hud.drawPeriscopeVignette(core);
                 return;
             }
 
             if (s.status === 'GameOver') {
                 screens.drawGameOver(core, s);
+                hud.drawPeriscopeVignette(core);
+                return;
+            }
+
+            if (s.status === 'MissionBriefing') {
+                screens.drawMissionBriefing(core, s);
+                hud.drawPeriscopeVignette(core);
+                return;
+            }
+
+            if (s.status === 'MissionComplete') {
+                screens.drawMissionComplete(core, s);
+                hud.drawPeriscopeVignette(core);
+                return;
+            }
+
+            if (s.status === 'CampaignComplete') {
+                screens.drawCampaignComplete(core, s);
                 hud.drawPeriscopeVignette(core);
                 return;
             }
@@ -58,9 +76,10 @@ window.SeaWolfRenderer = (() => {
             hud.drawHUD(core, s);
 
             if (s.status === 'Playing') screens.drawEscapeWarnings(core, s);
-            if (s.status === 'Playing') screens.drawWaveStartBanner(core, s);
+            if (s.status === 'Playing' && s.mode !== 'Campaign') screens.drawWaveStartBanner(core, s);
+            if (s.status === 'Playing' && s.mode === 'Campaign') hud.drawCampaignHUD(core, s);
 
-            if (s.status === 'WaveClear') {
+            if (s.status === 'WaveClear' && s.mode !== 'Campaign') {
                 const victoryImages = core.getVictoryImages();
                 if (s.wave !== core.getLastVictoryWave() && victoryImages.length > 0) {
                     core.setLastVictoryWave(s.wave);

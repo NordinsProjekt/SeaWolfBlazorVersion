@@ -1,6 +1,6 @@
 using Microsoft.JSInterop;
 
-namespace SeaWolfBlazorVersion.Services;
+namespace SeaWolfBlazorVersion.Client.Services;
 
 public class AudioService(IJSRuntime js)
 {
