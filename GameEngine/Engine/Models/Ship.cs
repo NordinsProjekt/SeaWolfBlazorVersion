@@ -26,6 +26,14 @@ public class Ship
     /// <summary>Downward tolerance added to the bottom edge to absorb per-frame travel.</summary>
     private const float HitBandTolerance = 6f;
 
+    // ── Damage-state constants ────────────────────────────────────────────────
+    /// <summary>
+    /// A burning (post-first-hit, two-hit) ship crawls at this fraction of its
+    /// base speed. Kept low and deliberate — landing the first torpedo should
+    /// buy a real window to finish the ship off, not a barely-noticeable dip.
+    /// </summary>
+    private const float BurningSpeedMultiplier = 0.3f;
+
     // ── Properties ───────────────────────────────────────────────────────────
     public Guid Id { get; } = Guid.NewGuid();
     public ShipType Type { get; init; }
@@ -33,7 +41,7 @@ public class Ship
     public float Y { get; set; }
     public float BaseSpeed { get; init; }
     public float CurrentSpeed => DamageState == ShipDamageState.Burning
-        ? BaseSpeed * 0.5f
+        ? BaseSpeed * BurningSpeedMultiplier
         : BaseSpeed;
     public int Width  { get; init; }
     public int Height { get; init; }

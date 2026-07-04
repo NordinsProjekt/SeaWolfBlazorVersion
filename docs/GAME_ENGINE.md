@@ -31,6 +31,9 @@ sent to the JavaScript renderer.
 | `ShipsEscaped` | `int` | Ships that reached the screen edge |
 | `ShakeTimer` | `float` | Screen-shake seconds remaining |
 | `WaveStartTimer` | `float` | Seconds since current wave became active |
+| `SelectedTube` | `int` | Index into `TorpedoTubes` — currently aimed tube |
+| `TubeAnglesDeg` | `float[]` | Serialised copy of `TorpedoTubes.AngleDeg` for the JS renderer |
+| `TubeCount` | `int` | Serialised copy of `TorpedoTubes.Count` |
 
 ### Constants
 
@@ -196,12 +199,15 @@ Builds a weighted pool of `ShipType` values and picks one at random:
 | Tanker | 185 | 60 | 0.6 | 400 | Yes |
 | Carrier | 220 | 68 | 0.45 | 700 | Yes |
 
+("Base speed" is expressed relative to Cargo; the actual `BaseSpeed` values in
+`Ship.cs` are px/s and multiplied by the current wave's `SpeedMultiplier`.)
+
 ### ShipDamageState
 
 | State | Description |
 |---|---|
 | `Healthy` | Full speed, no visual damage |
-| `Burning` | Half speed, fire particles, requires second torpedo to sink |
+| `Burning` | 30 % of base speed (`Ship.BurningSpeedMultiplier`), fire particles, requires second torpedo to sink |
 | `Sinking` | Rotating, sinking animation (1.5 s), then removed |
 
 ---
@@ -216,26 +222,39 @@ All input is bridged from JavaScript via `[JSInvokable]` methods on `Game.razor`
 | `OnClick(x, y)` | `click` | Start game or fire torpedo |
 | `OnKeyDown(key)` | `keydown` | Fire, pan tubes, pause |
 
+### TorpedoTubes geometry
+
+Tube angles are computed once in `TorpedoTubes` (not hardcoded separately in
+the engine and the renderer). They're spaced so each tube's line crosses the
+main ship lane (`ReferenceLaneY = 420`) at evenly-spaced X positions, rather
+than being spaced evenly by degree — evenly-by-degree spacing bunches the
+X-crossings near the centre and leaves large gaps near the edges.
+
 ### `ComputeAimedTube(float mouseX, float mouseY)`
 
-Divides the 1280 px canvas into 5 equal zones (256 px each) and returns
-the tube index `[0, 4]`. Tube 2 (centre) fires straight up.
+Finds whichever tube's `TargetX` is closest to `mouseX` (nearest-neighbour)
+and returns its index `[0, TorpedoTubes.Count - 1]`. Tube 2 (`DefaultTube`,
+centre) fires straight up.
 
 ### `FireTorpedoFromTube(int tubeIndex)`
 
-| Tube | Angle |
-|---:|---:|
-| 0 | −55 ° |
-| 1 | −25 ° |
-| 2 | 0 ° |
-| 3 | +25 ° |
-| 4 | +55 ° |
+| Tube | Angle | Crosses the lane at |
+|---:|---:|---|
+| 0 | −57.0 ° | x = 240 |
+| 1 | −37.6 ° | x = 440 |
+| 2 | 0 ° | x = 640 |
+| 3 | +37.6 ° | x = 840 |
+| 4 | +57.0 ° | x = 1040 |
 
-Torpedo velocity components:
+(A wider 7-tube fan spanning x = 40..1240 was tried and reverted — the outer
+two tubes' crosshairs fell inside the periscope vignette's dark corners and
+were effectively unusable even though they fired correctly.)
+
+Torpedo velocity components (`speed = 300`):
 
 ```
-Vx = sin(angleRad) × 5
-Vy = −cos(angleRad) × 5
+Vx = sin(angleRad) × speed
+Vy = −cos(angleRad) × speed
 ```
 
 Returns `false` (and does not fire) if the status is not `Playing`, there are

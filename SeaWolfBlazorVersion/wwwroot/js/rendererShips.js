@@ -29,18 +29,6 @@ window.SeaWolfRendererShips = (() => {
                 const drawH = w * (sprite.height / sprite.width);
                 ctx.drawImage(sprite, -w / 2, -drawH / 2, w, drawH);
 
-                if (type !== 'cargo' && type !== 'fishingboat' && type !== 'tanker' && type !== 'carrier') {
-                    const tints = {
-                        destroyer: 'rgba(60,100,180,0.28)',
-                        ptboat:    'rgba(40,120,40, 0.28)',
-                        cruiser:   'rgba(150,70,50, 0.25)',
-                    };
-                    ctx.globalCompositeOperation = 'source-atop';
-                    ctx.fillStyle = tints[type] ?? 'rgba(60,100,180,0.28)';
-                    ctx.fillRect(-w / 2, -drawH / 2, w, drawH);
-                    ctx.globalCompositeOperation = 'source-over';
-                }
-
                 if (ship.damageState === 'Burning') this._drawBurnDamage(ctx, w, drawH);
 
                 if (depthScale < 1.0) {
@@ -92,18 +80,42 @@ window.SeaWolfRendererShips = (() => {
             ctx.globalCompositeOperation = 'source-over';
         },
 
+        // One flat pixel-art block per particle, additively blended so
+        // overlapping flames brighten into hotspots instead of stacking into
+        // a solid opaque rectangle (the earlier version drew 3 nested
+        // squares per particle at ~120 particles/sec, which is dense enough
+        // that it read as a flat painted box sitting on the ship rather than
+        // individual flickering flame licks).
         _drawFireParticles(ctx, particles) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            const GRID = 4;
+
             particles.forEach(p => {
-                const alpha = Math.max(0, p.life);
-                const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
-                grad.addColorStop(0,   `rgba(255, 255, 200, ${alpha})`);
-                grad.addColorStop(0.4, `rgba(255, 140,   0, ${alpha * 0.8})`);
-                grad.addColorStop(1,   `rgba(180,   0,   0, 0)`);
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
+                const alpha = Math.max(0, Math.min(1, p.life));
+                if (alpha <= 0) return;
+
+                // Snap to a coarse fixed grid (not tied to particle size) so
+                // blocks read as deliberate pixel-art chunks. Block size still
+                // varies per-particle for a bit of texture.
+                const gx    = Math.round(p.x / GRID) * GRID;
+                const gy    = Math.round(p.y / GRID) * GRID;
+                const block = Math.max(4, Math.round(p.size / 2) * 2);
+
+                // p.life is each particle's own remaining seconds (spawned at
+                // ~0.8-1.2s, not normalised), but since that range is narrow
+                // it works fine as a rough "how fresh is this flame" signal:
+                // bright core when young, cooling through orange to ember red
+                // as it dies out.
+                const heat  = Math.min(1, alpha);
+                const color = heat > 0.65 ? '#ffe066' : heat > 0.35 ? '#ff7a1a' : '#c2340a';
+
+                ctx.globalAlpha = 0.35 + heat * 0.35;
+                ctx.fillStyle = color;
+                ctx.fillRect(gx - block / 2, gy - block / 2, block, block);
             });
+
+            ctx.restore();
         },
 
         _drawDestroyer(ctx, COLORS, w, h, state) {

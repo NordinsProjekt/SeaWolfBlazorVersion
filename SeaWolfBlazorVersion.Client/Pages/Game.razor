@@ -246,7 +246,7 @@
                     _engine.State.SelectedTube = Math.Max(0, _engine.State.SelectedTube - 1);
                     break;
                 case "ArrowRight":
-                    _engine.State.SelectedTube = Math.Min(4, _engine.State.SelectedTube + 1);
+                    _engine.State.SelectedTube = Math.Min(TorpedoTubes.Count - 1, _engine.State.SelectedTube + 1);
                     break;
                 case " ":
                     if (_engine.FireTorpedoFromTube(_engine.State.SelectedTube))

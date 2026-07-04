@@ -72,11 +72,21 @@ public class ShipTests
     }
 
     [Fact]
-    public void CurrentSpeed_WhenBurning_IsHalfBaseSpeed()
+    public void CurrentSpeed_WhenBurning_DropsTo30PercentOfBaseSpeed()
     {
         var ship = Ship.Create(ShipType.Destroyer, 1.0f);
         ship.DamageState = ShipDamageState.Burning;
-        Assert.Equal(ship.BaseSpeed * 0.5f, ship.CurrentSpeed, precision: 4);
+        Assert.Equal(ship.BaseSpeed * 0.3f, ship.CurrentSpeed, precision: 4);
+    }
+
+    [Fact]
+    public void CurrentSpeed_WhenBurning_IsSlowerThanTheOldHalfSpeedPenalty()
+    {
+        // Regression guard: burning ships should crawl noticeably more than
+        // the original 50% slowdown, not just barely more than before.
+        var ship = Ship.Create(ShipType.Tanker, 1.0f);
+        ship.DamageState = ShipDamageState.Burning;
+        Assert.True(ship.CurrentSpeed < ship.BaseSpeed * 0.5f);
     }
 
     // ── HitPoints / KillPoints ───────────────────────────────────────────────

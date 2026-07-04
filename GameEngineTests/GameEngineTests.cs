@@ -61,6 +61,15 @@ public class GameEngineTests
         Assert.Equal(0, engine.State.ComboCount);
     }
 
+    [Fact]
+    public void StartGame_SelectsCentreTube()
+    {
+        var engine = new GameEngine.Engine.GameEngine();
+        engine.State.SelectedTube = 0;
+        engine.StartGame();
+        Assert.Equal(TorpedoTubes.DefaultTube, engine.State.SelectedTube);
+    }
+
     // ── FireTorpedoFromTube ───────────────────────────────────────────────────
 
     [Fact]
@@ -169,7 +178,7 @@ public class GameEngineTests
     {
         var engine = new GameEngine.Engine.GameEngine();
         engine.StartGame();
-        engine.FireTorpedoFromTube(2);
+        engine.FireTorpedoFromTube(TorpedoTubes.DefaultTube);
 
         Assert.Equal(0f, engine.State.Torpedoes[0].Vx, precision: 4);
     }
@@ -189,20 +198,36 @@ public class GameEngineTests
     {
         var engine = new GameEngine.Engine.GameEngine();
         engine.StartGame();
-        engine.FireTorpedoFromTube(4);
+        engine.FireTorpedoFromTube(TorpedoTubes.Count - 1);
 
         Assert.True(engine.State.Torpedoes[0].Vx > 0);
     }
 
+    [Fact]
+    public void FireTorpedoFromTube_TubeIndexOutOfRange_ClampsInsteadOfThrowing()
+    {
+        var engine = new GameEngine.Engine.GameEngine();
+        engine.StartGame();
+
+        bool result = engine.FireTorpedoFromTube(99);
+
+        Assert.True(result);
+        Assert.Single(engine.State.Torpedoes);
+    }
+
     // ── ComputeAimedTube ─────────────────────────────────────────────────────
+    // Tubes are spaced so their lines cross the near-lane band at evenly
+    // spaced X positions (240, 440, 640, 840, 1040 — see
+    // TorpedoTubes.TargetX), and ComputeAimedTube picks whichever is closest
+    // to the cursor. Zone midpoints: 340, 540, 740, 940.
 
     [Theory]
     [InlineData(0f,    0)]   // far left
-    [InlineData(128f,  0)]   // still tube 0
-    [InlineData(256f,  1)]
+    [InlineData(300f,  0)]   // still tube 0 (< 340)
+    [InlineData(400f,  1)]   // tube 1 (340–540)
     [InlineData(640f,  2)]   // centre
-    [InlineData(896f,  3)]
-    [InlineData(1150f, 4)]
+    [InlineData(900f,  3)]   // tube 3 (740–940)
+    [InlineData(1000f, 4)]   // tube 4 (>= 940)
     [InlineData(1279f, 4)]   // far right
     public void ComputeAimedTube_ReturnsCorrectZone(float mouseX, int expectedTube)
     {
@@ -211,8 +236,8 @@ public class GameEngineTests
     }
 
     [Theory]
-    [InlineData(-10f, 0)]    // clamped to 0
-    [InlineData(1290f, 4)]   // clamped to 4
+    [InlineData(-10f, 0)]    // nearest tube is still 0
+    [InlineData(1290f, 4)]   // nearest tube is still 4 (the last one)
     public void ComputeAimedTube_ClampsOutOfBounds(float mouseX, int expectedTube)
     {
         var engine = new GameEngine.Engine.GameEngine();

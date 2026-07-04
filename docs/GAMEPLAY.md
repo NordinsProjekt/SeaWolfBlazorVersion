@@ -23,18 +23,26 @@ You fire torpedoes upward from a periscope at the bottom of the screen.
 
 ## Torpedo Tubes
 
-Five fixed tubes angle upward from the centre-bottom of the screen.
+Five fixed tubes angle upward from the centre-bottom of the screen. The
+angles aren't evenly spaced by degree — they're spaced so each tube's line
+crosses the main ship lane at evenly-spaced X positions (every 200 px),
+kept within the clearly-lit periscope circle so every tube's crosshair is
+actually visible (a wider 7-tube spread was tried and reverted — the outer
+two crosshairs landed in the dark vignetted corners and were effectively
+unusable).
 
-| Tube | Angle | Direction |
+| Tube | Angle | Crosses the lane at |
 |---:|---:|---|
-| 0 | −55 ° | Far left |
-| 1 | −25 ° | Left |
-| 2 | 0 ° | Straight up |
-| 3 | +25 ° | Right |
-| 4 | +55 ° | Far right |
+| 0 | −57.0 ° | x = 240 (far left) |
+| 1 | −37.6 ° | x = 440 |
+| 2 | 0 ° | x = 640 (straight up / centre) |
+| 3 | +37.6 ° | x = 840 |
+| 4 | +57.0 ° | x = 1040 (far right) |
 
-The active tube line is shown in bright green; inactive tubes are dimmer and dashed.  
-An aiming crosshair sits at the intersection of the active tube line and the ship-lane band.
+The active tube line is shown in bright green and glides smoothly toward the
+newly-selected tube instead of snapping; inactive tubes stay dim and dashed.  
+An aiming crosshair sits at the intersection of the active tube line and the
+ship-lane band, and follows the same smooth motion.
 
 **Capacity:** 2 torpedoes loaded at all times.  
 **Reload:** When both are expended a **4-second reload** begins automatically.  
@@ -69,8 +77,11 @@ but award **1.8× base points**.
 Ships requiring two hits (`Cargo`, `Cruiser`, `Tanker`, `Carrier`) transition
 through an intermediate **Burning** state after the first torpedo:
 
-- Speed drops to **50 %**.
-- Fire particles appear.
+- Speed drops to **30 %** of normal — a deliberate, heavy crawl rather than a
+  mild slowdown, so landing the first hit buys a real window to finish the
+  ship off.
+- Fire particles appear (rendered as flat pixel-art blocks, matching the ship
+  sprites).
 - A second torpedo finishes them off.
 
 ### Bonus torpedo drop

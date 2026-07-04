@@ -161,11 +161,11 @@ public sealed class GameComponentTests : TestContext
     {
         var cut = RenderComponent<Game>();
         cut.Instance.Engine.StartGame();
-        cut.Instance.Engine.State.SelectedTube = 4;
+        cut.Instance.Engine.State.SelectedTube = TorpedoTubes.Count - 1;
 
         await cut.InvokeAsync(() => cut.Instance.OnKeyDown("ArrowRight"));
 
-        Assert.Equal(4, cut.Instance.Engine.State.SelectedTube);
+        Assert.Equal(TorpedoTubes.Count - 1, cut.Instance.Engine.State.SelectedTube);
     }
 
     [Fact]

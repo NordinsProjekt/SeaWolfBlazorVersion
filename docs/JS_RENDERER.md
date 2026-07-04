@@ -38,15 +38,17 @@ Owns the shared canvas/context reference and all loaded assets.
 |---|---|
 | Canvas & context | Retrieves `<canvas>` by ID, stores `ctx` |
 | Sprite loading | Loads and pre-processes PNG sprites via `_prepareSprite()` |
-| Sprite types | `boat`, `cargo`, `cruiser`, `fishing`, `tanker`, `carrier` |
+| Sprite types | `boat` (destroyer), `ptboat`, `cargo`, `cruiser`, `fishing`, `tanker`, `carrier` — one distinct pixel-art silhouette per `ShipType` |
 | Screen images | Start screen (`MainPage.png`), 4 victory images |
 | Colour palette | `COLORS` object shared with all modules |
 | Wave offset | Incremented each frame to animate ocean waves |
 | Star field | Generated once, cached across frames |
 
-**`_prepareSprite(img, cropH, removeTealBg)`**  
-Draws the image onto an off-screen canvas, clips to `cropH` rows, and
-optionally removes teal/near-black background pixels with alpha < 40.
+**`_prepareSprite(img)`**  
+Draws the image onto an off-screen canvas and snaps any faint anti-aliasing
+fringe (alpha < 40) fully transparent. The pixel-art sprites already ship
+with clean, hard-edged alpha and a tight crop, so no per-image cropping or
+chroma-keying is needed anymore.
 
 ---
 
@@ -80,8 +82,9 @@ Draws each ship, its damage state, far-lane depth effect, bow wave, and fire.
 3. If sinking: rotate by `sinkProgress × 0.4`, fade alpha.
 4. If far-lane (`depthScale < 1`): dim alpha to 0.82.
 5. **Sprite path** — if the sprite image is loaded, draw it scaled to
-   `ship.width` wide; apply a colour tint overlay via `source-atop` compositing
-   and a blue depth-haze overlay for far-lane ships.
+   `ship.width` wide (height derives from the sprite's own aspect ratio, which
+   is authored to match the `Ship.cs` width/height template); apply a burn
+   tint and a blue depth-haze overlay for far-lane ships.
 6. **Vector fallback** — if the sprite is not yet loaded, draw a hand-coded
    canvas shape (`_drawDestroyer`, `_drawPtBoat`, `_drawCargo`).
 7. After `ctx.restore()`: draw bow wake ellipse and V-wake lines in world space.
@@ -246,9 +249,16 @@ sound only starts after the first user interaction.
 |---|---|
 | Start screen | `images/Startscreen/MainPage.png` |
 | Victory images | `images/Victory/Victory1.png` … `victory4.png` |
-| Boat sprite | `images/boat.png` |
+| Destroyer sprite | `images/boat.png` |
+| PT Boat sprite | `images/ptboat.png` |
 | Cargo sprite | `images/cargo.png` |
 | Cruiser sprite | `images/cruiser.png` |
 | Fishing boat sprite | `images/fishing.png` |
 | Tanker sprite | `images/tanker.png` |
 | Carrier sprite | `images/carrier.png` |
+
+All seven ship sprites are flat-shaded pixel art with hard black outlines and
+a clean transparent background, matching the style of the start screen and
+victory images. Each sprite's native aspect ratio closely matches its
+`Ship.cs` width/height template so the visible hull lines up with the
+hit-detection band.

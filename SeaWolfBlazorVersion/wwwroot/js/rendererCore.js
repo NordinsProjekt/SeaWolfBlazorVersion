@@ -3,8 +3,10 @@ window.SeaWolfRendererCore = (() => {
     let canvas = null;
     let ctx = null;
     let waveOffset = 0;
-    let boatImage  = null;
-    let boatSprite  = null;
+    let destroyerImage = null;
+    let destroyerSprite = null;
+    let ptBoatImage = null;
+    let ptBoatSprite = null;
     let cargoSprite = null;
     let cruiserSprite = null;
     let fishingSprite = null;
@@ -30,23 +32,19 @@ window.SeaWolfRendererCore = (() => {
         hudDim:      '#007700'
     };
 
-    // Crops an image to `cropH` rows (or full height if null), then snaps
-    // any fringe pixels with very low alpha to fully transparent.
-    function _prepareSprite(img, cropH, removeTealBg = false) {
-        const h = cropH ?? img.naturalHeight;
+    // Pixel-art sprites ship with clean, hard-edged alpha already baked in.
+    // This just snaps any faint anti-aliasing fringe fully transparent so a
+    // sprite never shows a soft halo over the ocean background.
+    function _prepareSprite(img) {
         const off = document.createElement('canvas');
         off.width  = img.naturalWidth;
-        off.height = h;
+        off.height = img.naturalHeight;
         const offCtx = off.getContext('2d');
         offCtx.drawImage(img, 0, 0);
-        const data = offCtx.getImageData(0, 0, off.width, h);
+        const data = offCtx.getImageData(0, 0, off.width, off.height);
         const px   = data.data;
         for (let i = 0; i < px.length; i += 4) {
-            if (px[i + 3] < 40) { px[i + 3] = 0; continue; }
-            if (removeTealBg) {
-                const r = px[i], g = px[i + 1], b = px[i + 2];
-                if ((r + g + b) < 160 && b > r && (b - r) >= 8) px[i + 3] = 0;
-            }
+            if (px[i + 3] < 40) px[i + 3] = 0;
         }
         offCtx.putImageData(data, 0, 0);
         return off;
@@ -64,12 +62,14 @@ window.SeaWolfRendererCore = (() => {
 
         getSprite(type) {
             switch (type) {
+                case 'destroyer':   return destroyerSprite;
+                case 'ptboat':      return ptBoatSprite;
                 case 'cargo':       return cargoSprite;
                 case 'cruiser':     return cruiserSprite;
                 case 'fishingboat': return fishingSprite;
                 case 'tanker':      return tankerSprite;
                 case 'carrier':     return carrierSprite;
-                default:            return boatSprite;
+                default:            return destroyerSprite;
             }
         },
 
@@ -94,28 +94,32 @@ window.SeaWolfRendererCore = (() => {
                 victoryImages.push(img);
             });
 
-            boatImage = new Image();
-            boatImage.onload = () => { boatSprite = _prepareSprite(boatImage, null, true); };
-            boatImage.src = 'images/boat.png';
+            destroyerImage = new Image();
+            destroyerImage.onload = () => { destroyerSprite = _prepareSprite(destroyerImage); };
+            destroyerImage.src = 'images/boat.png';
+
+            ptBoatImage = new Image();
+            ptBoatImage.onload = () => { ptBoatSprite = _prepareSprite(ptBoatImage); };
+            ptBoatImage.src = 'images/ptboat.png';
 
             const cargoImg = new Image();
-            cargoImg.onload = () => { cargoSprite = _prepareSprite(cargoImg, 820); };
+            cargoImg.onload = () => { cargoSprite = _prepareSprite(cargoImg); };
             cargoImg.src = 'images/cargo.png';
 
             const cruiserImg = new Image();
-            cruiserImg.onload = () => { cruiserSprite = _prepareSprite(cruiserImg, 800, true); };
+            cruiserImg.onload = () => { cruiserSprite = _prepareSprite(cruiserImg); };
             cruiserImg.src = 'images/cruiser.png';
 
             const fishingImg = new Image();
-            fishingImg.onload = () => { fishingSprite = _prepareSprite(fishingImg, 900, true); };
+            fishingImg.onload = () => { fishingSprite = _prepareSprite(fishingImg); };
             fishingImg.src = 'images/fishing.png';
 
             const tankerImg = new Image();
-            tankerImg.onload = () => { tankerSprite = _prepareSprite(tankerImg, 750, true); };
+            tankerImg.onload = () => { tankerSprite = _prepareSprite(tankerImg); };
             tankerImg.src = 'images/tanker.png';
 
             const carrierImg = new Image();
-            carrierImg.onload = () => { carrierSprite = _prepareSprite(carrierImg, 790, true); };
+            carrierImg.onload = () => { carrierSprite = _prepareSprite(carrierImg); };
             carrierImg.src = 'images/carrier.png';
         }
     };

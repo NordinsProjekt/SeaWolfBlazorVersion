@@ -1,5 +1,9 @@
 // rendererHUD.js — HUD overlay, tube spread lines, periscope vignette
 window.SeaWolfRendererHUD = (() => {
+    // Eases toward the selected tube's angle each frame instead of snapping,
+    // so switching tubes reads as a smooth periscope pan.
+    let _visualAngleDeg = null;
+
     return {
         drawHUD(core, s) {
             const canvas = core.getCanvas();
@@ -136,31 +140,65 @@ window.SeaWolfRendererHUD = (() => {
             const ctx    = core.getCtx();
             const COLORS = core.getColors();
 
-            const TUBE_ANGLES_DEG = [-55, -25, 0, 25, 55];
+            // Read the tube fan from state (computed once in TorpedoTubes.cs)
+            // instead of keeping a second hardcoded copy here that could
+            // drift out of sync with the engine.
+            const TUBE_ANGLES_DEG = (s.tubeAnglesDeg && s.tubeAnglesDeg.length)
+                ? s.tubeAnglesDeg
+                : [-56.98, -37.57, 0, 37.57, 56.98];
             const LAUNCH_Y = 680;
             const LINE_LEN = 530;
             const aimX     = canvas.width / 2;
-            const selected = s.selectedTube ?? 2;
+            const selected = Math.min(
+                Math.max(s.selectedTube ?? Math.floor(TUBE_ANGLES_DEG.length / 2), 0),
+                TUBE_ANGLES_DEG.length - 1
+            );
+
+            // Ease the on-screen aim toward the selected tube instead of
+            // snapping — this is the "smooth periscope pan" feel. The actual
+            // fired trajectory always uses the exact discrete tube angle
+            // (computed server-side in FireTorpedoFromTube); only the visual
+            // indicator glides.
+            const targetAngle = TUBE_ANGLES_DEG[selected];
+            if (_visualAngleDeg === null) _visualAngleDeg = targetAngle;
+            _visualAngleDeg += (targetAngle - _visualAngleDeg) * 0.25;
+            if (Math.abs(targetAngle - _visualAngleDeg) < 0.05) _visualAngleDeg = targetAngle;
 
             ctx.save();
 
+            // Dim reference fan — every tube except the active one, static
             TUBE_ANGLES_DEG.forEach((angleDeg, i) => {
+                if (i === selected) return;
                 const rad  = angleDeg * Math.PI / 180;
                 const endX = aimX + Math.sin(rad) * LINE_LEN;
                 const endY = LAUNCH_Y - Math.cos(rad) * LINE_LEN;
-                const isActive = i === selected;
 
                 ctx.beginPath();
                 ctx.moveTo(aimX, LAUNCH_Y);
                 ctx.lineTo(endX, endY);
-                ctx.strokeStyle = isActive ? COLORS.crosshair : COLORS.hudDim;
-                ctx.lineWidth   = isActive ? 1.5 : 1;
-                ctx.globalAlpha = isActive ? 0.85 : 0.35;
-                ctx.shadowColor = isActive ? COLORS.crosshair : 'transparent';
-                ctx.shadowBlur  = isActive ? 5 : 0;
-                ctx.setLineDash(isActive ? [] : [6, 5]);
+                ctx.strokeStyle = COLORS.hudDim;
+                ctx.lineWidth   = 1;
+                ctx.globalAlpha = 0.35;
+                ctx.shadowBlur  = 0;
+                ctx.setLineDash([6, 5]);
                 ctx.stroke();
             });
+
+            // Active tube line — bright, follows the eased angle
+            const activeRad  = _visualAngleDeg * Math.PI / 180;
+            const activeEndX = aimX + Math.sin(activeRad) * LINE_LEN;
+            const activeEndY = LAUNCH_Y - Math.cos(activeRad) * LINE_LEN;
+
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(aimX, LAUNCH_Y);
+            ctx.lineTo(activeEndX, activeEndY);
+            ctx.strokeStyle = COLORS.crosshair;
+            ctx.lineWidth   = 1.5;
+            ctx.globalAlpha = 0.85;
+            ctx.shadowColor = COLORS.crosshair;
+            ctx.shadowBlur  = 5;
+            ctx.stroke();
 
             ctx.setLineDash([]);
             ctx.globalAlpha = 1;
@@ -180,11 +218,11 @@ window.SeaWolfRendererHUD = (() => {
             ctx.lineTo(aimX, LAUNCH_Y + 6);
             ctx.stroke();
 
-            // Aim indicator crosshair
-            const aRad   = TUBE_ANGLES_DEG[selected] * Math.PI / 180;
+            // Aim indicator crosshair — rides the same eased angle as the
+            // active line, so it glides smoothly between tubes too.
             const targetY = 420;
-            const dist    = (LAUNCH_Y - targetY) / Math.cos(aRad);
-            const targetX = aimX + Math.sin(aRad) * dist;
+            const dist    = (LAUNCH_Y - targetY) / Math.cos(activeRad);
+            const targetX = aimX + Math.sin(activeRad) * dist;
             const sz = 11;
 
             ctx.strokeStyle = COLORS.crosshair;

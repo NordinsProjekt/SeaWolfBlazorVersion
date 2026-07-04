@@ -22,7 +22,7 @@ public class TorpedoAndCollisionTests
         var sim = new GameSimulator();
         sim.StartArcade();
 
-        sim.Engine.FireTorpedoFromTube(2); // centre tube, straight up
+        sim.Engine.FireTorpedoFromTube(2); // any tube — trajectory isn't checked here
         var torp = sim.State.Torpedoes[0];
 
         // Run until torpedo leaves the top of the canvas (y < -50)

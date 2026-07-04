@@ -249,7 +249,14 @@ public class GameEngine
 
     private static void UpdateFireParticles(Ship ship, float dt)
     {
-        for (int i = 0; i < 2; i++)
+        // Probabilistic single spawn instead of a fixed 2-per-frame. At 60fps,
+        // "2 per frame" is ~120 particles/sec — with an ~1s average lifetime
+        // that's roughly 120 particles alive at once on a ship that's only
+        // 130-220px wide, so densely overlapping that the pixel-art blocks
+        // merge into a solid rectangle instead of reading as flame. ~45%
+        // chance of 1 particle/frame (~27/sec) keeps individual flame licks
+        // visually distinct.
+        if (Random.Shared.NextSingle() < 0.45f)
         {
             ship.FireParticles.Add(new FireParticle
             {
@@ -272,16 +279,20 @@ public class GameEngine
 
     // Input handlers called by Game.razor
 
-    private static readonly float[] TubeAngles = [-55f, -25f, 0f, 25f, 55f];
-    private const float LaunchY = 680f;
-
-    private const float LaunchX = 640f;
-
     public int ComputeAimedTube(float mouseX, float mouseY)
     {
-        // Divide the 1280-px canvas into 5 equal zones (256 px each)
-        const float zoneWidth = 1280f / 5f;
-        return Math.Clamp((int)(mouseX / zoneWidth), 0, 4);
+        // Pick whichever tube's line passes closest to the cursor at the
+        // main ship-lane depth. See TorpedoTubes for why they're spaced
+        // this way instead of evenly by raw screen-X zones.
+        var targets = TorpedoTubes.TargetX;
+        int best = 0;
+        float bestDist = MathF.Abs(mouseX - targets[0]);
+        for (int i = 1; i < targets.Length; i++)
+        {
+            float dist = MathF.Abs(mouseX - targets[i]);
+            if (dist < bestDist) { bestDist = dist; best = i; }
+        }
+        return best;
     }
 
     public bool FireTorpedoFromTube(int tubeIndex)
@@ -290,12 +301,13 @@ public class GameEngine
         if (State.TorpedoCount <= 0 || State.IsReloading) return false;
         if (State.TorpedoBudgetLeft == 1 && State.Mode == GameMode.Campaign) { /* last shot allowed */ }
 
-        float angleRad = TubeAngles[Math.Clamp(tubeIndex, 0, 4)] * MathF.PI / 180f;
+        int tube = Math.Clamp(tubeIndex, 0, TorpedoTubes.Count - 1);
+        float angleRad = TorpedoTubes.AngleDeg[tube] * MathF.PI / 180f;
         const float speed = 300f;
         State.Torpedoes.Add(new Torpedo
         {
-            X = LaunchX,
-            Y = LaunchY,
+            X = TorpedoTubes.LaunchX,
+            Y = TorpedoTubes.LaunchY,
             Vx = MathF.Sin(angleRad) * speed,
             Vy = -MathF.Cos(angleRad) * speed
         });
@@ -400,7 +412,7 @@ public class GameEngine
         State.ShakeTimer = 0;
         State.WaveStartTimer = 0;
         State.AimX = 640f;
-        State.SelectedTube = 2;
+        State.SelectedTube = TorpedoTubes.DefaultTube;
     }
 
     private void ResetWave(int waveNumber, int shipCountOverride = 0)

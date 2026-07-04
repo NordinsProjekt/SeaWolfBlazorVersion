@@ -40,7 +40,12 @@ public class GameState
 
     // Torpedo tube aim
     public float AimX { get; set; } = 640f;
-    public int SelectedTube { get; set; } = 2; // 0 = far-left … 4 = far-right
+    public int SelectedTube { get; set; } = TorpedoTubes.DefaultTube; // 0 = far-left … Count-1 = far-right
+
+    // Tube geometry, serialised so the JS renderer always matches the engine
+    // exactly instead of keeping its own hardcoded copy of the angles.
+    public float[] TubeAnglesDeg => TorpedoTubes.AngleDeg;
+    public int TubeCount => TorpedoTubes.Count;
 
     // Wave clear bonus display
     public float WaveBonusDisplayTimer { get; set; }
