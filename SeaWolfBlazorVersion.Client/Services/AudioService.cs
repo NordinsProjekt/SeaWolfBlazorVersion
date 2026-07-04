@@ -24,4 +24,35 @@ public class AudioService(IJSRuntime js)
 
     public ValueTask PlayGameOverAsync()
         => js.InvokeVoidAsync("SeaWolfAudio.playGameOver");
+
+    // ── New sound effects ────────────────────────────────────────────────────
+
+    public ValueTask PlayEscapeAlarmAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playEscapeAlarm");
+
+    public ValueTask PlayUIClickAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playUIClick");
+
+    public ValueTask PlaySonarPingAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playSonarPing");
+
+    public ValueTask PlayMissionSuccessAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playMissionSuccess");
+
+    public ValueTask PlayMissionFailedAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playMissionFailed");
+
+    public ValueTask PlayCampaignCompleteAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.playCampaignComplete");
+
+    // ── Background music ─────────────────────────────────────────────────────
+
+    public ValueTask EnsureMusicStartedAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.ensureMusicStarted");
+
+    public ValueTask StopMusicAsync()
+        => js.InvokeVoidAsync("SeaWolfAudio.stopMusic");
+
+    public ValueTask SetMusicDuckedAsync(bool ducked)
+        => js.InvokeVoidAsync("SeaWolfAudio.setMusicDucked", ducked);
 }

@@ -24,11 +24,13 @@ public class CampaignFlowTests
             sim.Engine.AdvanceMissionBriefing();
             sim.AssertStatus(GameStatus.Playing);
 
-            // Satisfy objective immediately via injection
+            // Satisfy objective immediately via injection, then clear the
+            // board — campaign missions are one continuous stage, so this
+            // completes the mission directly (no wave-clear interstitial).
             sim.InjectObjectiveSinks();
-            sim.Engine.Update(GameSimulator.FrameDtPublic); // caps spawning
-            sim.ForceWaveClear();                           // → WaveClear
-            sim.RunFor(GameState.WaveClearPause + 0.1f);    // → CompleteMission
+            sim.Engine.Update(GameSimulator.FrameDtPublic); // stops further spawning
+            sim.ForceWaveClear();                           // clears the board → completes
+            sim.RunFor(GameState.WaveClearPause + 0.1f);    // harmless extra settle time
 
             if (m < 6)
             {
@@ -50,9 +52,9 @@ public class CampaignFlowTests
         sim.Engine.AdvanceMissionBriefing();
 
         sim.InjectObjectiveSinks();
-        sim.Engine.Update(GameSimulator.FrameDtPublic); // caps spawning
-        sim.ForceWaveClear();                           // → WaveClear
-        sim.RunFor(GameState.WaveClearPause + 0.1f);    // → MissionComplete
+        sim.Engine.Update(GameSimulator.FrameDtPublic); // stops further spawning
+        sim.ForceWaveClear();                           // clears the board → completes
+        sim.RunFor(GameState.WaveClearPause + 0.1f);    // harmless extra settle time
 
         sim.AssertStatus(GameStatus.MissionComplete);
         Assert.False(sim.State.CampaignMissionFailed);
@@ -85,30 +87,32 @@ public class CampaignFlowTests
         sim.AssertStatus(GameStatus.CampaignComplete);
     }
 
-    // ── Wave progression inside a mission ────────────────────────────────────
+    // ── Continuous single-stage mission behaviour ────────────────────────────
 
     [Fact]
-    public void Campaign_Mission1_Wave1Clear_AdvancesToWave2_NotComplete()
+    public void Campaign_Mission1_ClearingBoardWithoutObjectiveMet_KeepsPlayingContinuously()
     {
         var sim = new GameSimulator();
         sim.Engine.StartCampaign();
         sim.Engine.AdvanceMissionBriefing();
 
-        // Mission 1: waves 1–2. Clearing wave 1 should not end the mission.
-        sim.ForceWaveClear();
-        sim.AssertStatus(GameStatus.WaveClear);
-        sim.SkipWaveClear();
+        // Mission 1's objective is NOT met. Clearing whatever's currently
+        // on screen must not pause or end the mission — it should just
+        // keep playing (and keep spawning), never dropping into a
+        // wave-clear interstitial or otherwise interrupting the stage.
+        sim.State.Ships.Clear();
+        sim.Engine.Update(GameSimulator.FrameDtPublic);
 
         sim.AssertStatus(GameStatus.Playing);
-        sim.AssertWave(2);
+        sim.AssertMission(1);
+        Assert.False(sim.State.CampaignMissionFailed);
     }
 
     [Fact]
-    public void Campaign_Mission2_SpansThreeWaves_WaveClearAdvances()
+    public void Campaign_Mission2_WaveTierRampsWithShipsSpawned_CappedAtEndWave()
     {
         var sim = new GameSimulator();
         sim.Engine.StartCampaign();
-        // skip to mission 2
         sim.Engine.AdvanceMissionBriefing();
         sim.InjectObjectiveSinks();
         sim.Engine.Update(GameSimulator.FrameDtPublic);
@@ -117,13 +121,23 @@ public class CampaignFlowTests
         sim.Engine.AdvanceMissionBriefing();
         sim.AssertWave(2); // mission 2 starts at wave 2
 
-        sim.ForceWaveClear();
-        sim.SkipWaveClear();
-        sim.AssertWave(3);
+        var mission = CampaignManager.GetMission(2);
 
-        sim.ForceWaveClear();
-        sim.SkipWaveClear();
-        sim.AssertWave(4); // still inside mission 2 (EndWave=4)
+        // Isolate the wave-ramp behaviour from the lives/escape mechanic —
+        // nothing in this test fires torpedoes, so ships will just escape;
+        // unlimited lives keeps that from ending the mission early.
+        sim.State.CampaignLives = 9999;
+
+        // Let enough real ships spawn — without ever satisfying the
+        // objective — to cross both of mission 2's ramp thresholds
+        // (wave 2→3→4). The tier should climb but never exceed EndWave,
+        // and the mission should just keep playing: no wave-clear pause,
+        // no early completion, no mission change.
+        sim.RunFor(mission.ShipsPerWave * 4 * DifficultyManager.GetWave(2).SpawnIntervalSeconds);
+
+        sim.AssertStatus(GameStatus.Playing);
+        Assert.Equal(mission.EndWave, sim.State.Wave);
+        sim.AssertMission(2);
     }
 
     // ── Failure paths ─────────────────────────────────────────────────────────
@@ -137,10 +151,26 @@ public class CampaignFlowTests
 
         int livesBefore = sim.State.CampaignLives;
 
-        // Each escape costs one life immediately
+        // Each escape costs one life immediately (defaults to an
+        // objective-type ship — see GameSimulator.InjectEscapes)
         sim.InjectEscapes(1);
 
         Assert.Equal(livesBefore - 1, sim.State.CampaignLives);
+    }
+
+    [Fact]
+    public void Campaign_NonObjectiveTypeEscape_DoesNotDecrementLives()
+    {
+        var sim = new GameSimulator();
+        sim.Engine.StartCampaign(); // Mission 1 targets: Destroyer, PtBoat
+        sim.Engine.AdvanceMissionBriefing();
+
+        int livesBefore = sim.State.CampaignLives;
+
+        // Tanker isn't a mission-1 objective type — must be free.
+        sim.InjectEscapes(1, ShipType.Tanker);
+
+        Assert.Equal(livesBefore, sim.State.CampaignLives);
     }
 
     [Fact]

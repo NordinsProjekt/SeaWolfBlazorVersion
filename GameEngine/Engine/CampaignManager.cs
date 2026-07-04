@@ -42,7 +42,7 @@ public static class CampaignManager
             CodeName      : "OPERATION COASTAL SWEEP",
             Briefing      : "Enemy patrol boats have been spotted along the coast.\n" +
                             "Sink 4 enemy destroyers or PT boats to clear the sea lane.\n" +
-                            "You have 3 lives. Do not let more than 3 ships escape.",
+                            "You have 3 lives. Do not let more than 3 destroyers or PT boats escape.",
             StartWave     : 1,
             EndWave       : 2,
             Lives         : 3,
@@ -60,7 +60,7 @@ public static class CampaignManager
             CodeName      : "OPERATION CONVOY RAID",
             Briefing      : "A supply convoy is crossing the strait at dusk.\n" +
                             "Sink 5 cargo ships or tankers to cut off enemy supplies.\n" +
-                            "Civilian casualties are unacceptable — no more than 2 escapes.",
+                            "Civilian casualties are unacceptable — no more than 2 cargo ships or tankers may escape.",
             StartWave     : 2,
             EndWave       : 4,
             Lives         : 3,
@@ -113,7 +113,7 @@ public static class CampaignManager
             MissionNumber : 5,
             CodeName      : "OPERATION DEEP STRIKE",
             Briefing      : "The enemy fleet is at full battle strength.\n" +
-                            "Survive 3 waves and sink at least 12 ships of any type.\n" +
+                            "Sink at least 12 ships of any type to break their assault.\n" +
                             "Only 1 life remains. There is no margin for error.",
             StartWave     : 6,
             EndWave       : 8,
@@ -165,4 +165,14 @@ public static class CampaignManager
         return mission.Objective.TargetTypes.Sum(t =>
             sinksByType.TryGetValue(t, out var count) ? count : 0);
     }
+
+    /// <summary>
+    /// Whether a ship type counts toward this mission's objective — used both
+    /// for sink-progress counting (<see cref="CountObjectiveSinks"/>) and for
+    /// deciding whether an escaped ship of this type should cost a life.
+    /// An empty TargetTypes list means every type counts (matching
+    /// CountObjectiveSinks' behaviour).
+    /// </summary>
+    public static bool IsObjectiveType(MissionConfig mission, ShipType type) =>
+        mission.Objective.TargetTypes.Count == 0 || mission.Objective.TargetTypes.Contains(type);
 }

@@ -61,10 +61,15 @@ public class GameEngine
                 HandleCampaignOrArcadeFail();
                 return;
             }
-            UpdateCampaignObjective();
+            UpdateCampaignObjective(mission);
         }
-
-        CheckWaveClear(wave);
+        else
+        {
+            // Campaign missions are one continuous stage (see
+            // UpdateCampaignObjective) and never use the arcade wave-clear
+            // pause/bonus-screen cycle.
+            CheckWaveClear(wave);
+        }
     }
 
     private void TickTimers(float dt)
@@ -93,7 +98,22 @@ public class GameEngine
     {
         State.SpawnTimer += dt;
         if (State.SpawnTimer < wave.SpawnIntervalSeconds) return;
-        if (State.ShipsSpawnedThisWave >= State.WaveTotalShips) return;
+
+        if (State.Mode == GameMode.Campaign)
+        {
+            // Campaign missions are one continuous stage: ships keep coming
+            // until the objective is satisfied — there's no small fixed
+            // per-wave batch to exhaust and no mid-mission "stage clear"
+            // break. Once the objective is met, UpdateCampaignObjective lets
+            // whatever's already on screen resolve, then completes the
+            // mission directly.
+            var mission = CampaignManager.GetMission(State.CampaignMission);
+            if (State.CampaignSinks >= mission.Objective.RequiredSinks) return;
+        }
+        else if (State.ShipsSpawnedThisWave >= State.WaveTotalShips)
+        {
+            return;
+        }
 
         var type = DifficultyManager.PickShipType(wave);
         var direction = Random.Shared.NextSingle() > 0.5f ? 1 : -1;
@@ -102,6 +122,25 @@ public class GameEngine
         State.Ships.Add(Ship.Create(type, wave.SpeedMultiplier, direction, farLane));
         State.ShipsSpawnedThisWave++;
         State.SpawnTimer = 0;
+
+        if (State.Mode == GameMode.Campaign)
+            RampCampaignDifficulty();
+    }
+
+    /// <summary>
+    /// With no more mid-mission wave-clear breaks to escalate difficulty at,
+    /// campaign missions ramp their effective wave tier (spawn rate, speed,
+    /// ship-type pool — see DifficultyManager) every ShipsPerWave ships
+    /// spawned instead, capped at the mission's EndWave. This keeps the
+    /// "gets harder as the mission goes on" feel without any pause in the
+    /// action.
+    /// </summary>
+    private void RampCampaignDifficulty()
+    {
+        var mission = CampaignManager.GetMission(State.CampaignMission);
+        if (State.Wave >= mission.EndWave || mission.ShipsPerWave <= 0) return;
+        if (State.ShipsSpawnedThisWave % mission.ShipsPerWave == 0)
+            State.Wave++;
     }
 
     private void UpdateShips(float dt)
@@ -140,7 +179,7 @@ public class GameEngine
         State.ComboCount = 0;
         State.ComboTimer = 0;
 
-        if (State.Mode == GameMode.Campaign)
+        if (State.Mode == GameMode.Campaign && IsObjectiveShip(ship.Type))
             State.CampaignLives--;
 
         State.FloatingTexts.Add(new FloatingText
@@ -152,6 +191,20 @@ public class GameEngine
             Life = 2.0f,
             MaxLife = 2.0f
         });
+    }
+
+    /// <summary>
+    /// Whether an escaped ship of this type should cost a life in the
+    /// current campaign mission — only ships that count toward the mission
+    /// objective matter (same "empty TargetTypes = every type counts" rule
+    /// as CampaignManager.CountObjectiveSinks). Letting incidental,
+    /// non-objective ships slip past for free keeps a mission's failure
+    /// condition tied to what it actually asked you to do.
+    /// </summary>
+    private bool IsObjectiveShip(ShipType type)
+    {
+        var mission = CampaignManager.GetMission(State.CampaignMission);
+        return CampaignManager.IsObjectiveType(mission, type);
     }
 
     private void UpdateTorpedoes(float dt)
@@ -230,19 +283,11 @@ public class GameEngine
 
     private void UpdateWaveClear(float dt)
     {
+        // Arcade-only: campaign missions never enter WaveClear status (see
+        // UpdateCampaignObjective / UpdatePlaying), so this is purely the
+        // classic arcade "show the bonus, then advance" pause.
         State.WaveClearTimer += dt;
         if (State.WaveClearTimer < GameState.WaveClearPause) return;
-
-        if (State.Mode == GameMode.Campaign)
-        {
-            var mission = CampaignManager.GetMission(State.CampaignMission);
-            if (State.Wave >= mission.EndWave ||
-                State.CampaignSinks >= mission.Objective.RequiredSinks)
-            {
-                CompleteMission(mission);
-                return;
-            }
-        }
 
         AdvanceToNextWave();
     }
@@ -478,17 +523,18 @@ public class GameEngine
         }
     }
 
-    private void UpdateCampaignObjective()
+    private void UpdateCampaignObjective(MissionConfig mission)
     {
-        var mission = CampaignManager.GetMission(State.CampaignMission);
         State.CampaignSinks = CampaignManager.CountObjectiveSinks(
             mission, State.TotalShipsSunk, State.SinksByTypeDict());
 
-        // When the objective is met, stop spawning new ships so the remaining
-        // ones sail off or sink naturally. CheckWaveClear will fire once the
-        // screen is empty and UpdateWaveClear will call CompleteMission.
-        if (State.CampaignSinks >= mission.Objective.RequiredSinks)
-            State.WaveTotalShips = State.ShipsSpawnedThisWave;
+        // Once the objective is met, TrySpawnShip stops adding new ships
+        // (it checks State.CampaignSinks itself). Once whatever's already
+        // on screen has sailed off or sunk, complete the mission right
+        // away — no wave-clear interstitial, no waiting on a fixed ship
+        // quota, straight into the result screen.
+        if (State.CampaignSinks >= mission.Objective.RequiredSinks && State.Ships.Count == 0)
+            CompleteMission(mission);
     }
 
     private void CompleteMission(MissionConfig mission)

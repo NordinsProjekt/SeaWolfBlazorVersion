@@ -1,6 +1,7 @@
-// rendererScreens.js — start screen, game-over, wave-clear, wave-start banner, escape warnings, pause
+// rendererScreens.js - start screen, game-over, wave-clear, wave-start banner, escape warnings, pause
 window.SeaWolfRendererScreens = (() => {
     let _showHighScores = false;
+    let _highScoreShownAt = 0;
 
     // Hit-boxes for the three start-screen buttons (canvas coordinates).
     // Updated every frame so the host can do precise hit-testing.
@@ -24,7 +25,10 @@ window.SeaWolfRendererScreens = (() => {
     }
 
     return {
-        toggleHighScores() { _showHighScores = !_showHighScores; },
+        toggleHighScores() {
+            _showHighScores = !_showHighScores;
+            if (_showHighScores) _highScoreShownAt = Date.now();
+        },
         getStartScreenButtons() { return _btns; },
 
         drawStartScreen(core, s) {
@@ -51,11 +55,13 @@ window.SeaWolfRendererScreens = (() => {
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
 
-            // Title
+            // Title — a slow breathing glow instead of a fixed blur radius,
+            // so the title reads as gently alive rather than a static stamp.
+            const titlePulse = 20 + Math.sin(Date.now() * 0.0015) * 6;
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'alphabetic';
             ctx.shadowColor  = '#00FF00';
-            ctx.shadowBlur   = 20;
+            ctx.shadowBlur   = titlePulse;
             ctx.fillStyle    = '#00FF00';
             ctx.font = 'bold 56px "Courier New", monospace';
             ctx.fillText('SEA WOLF', cx, cy - 80);
@@ -325,10 +331,11 @@ window.SeaWolfRendererScreens = (() => {
             ctx.shadowColor = '#00CCFF';
             ctx.shadowBlur  = 10;
             ctx.font = 'bold 14px "Courier New", monospace';
-            ctx.fillText(`\u2500\u2500 MISSION ${s.campaignMission ?? 1} \u2500\u2500`, cx, 82);
+            ctx.fillText(`── MISSION ${s.campaignMission ?? 1} ──`, cx, 82);
 
-            // Code name
-            ctx.shadowBlur = 26;
+            // Code name — same slow-breathing glow as the start-screen title
+            const codeNamePulse = 26 + Math.sin(Date.now() * 0.0015) * 8;
+            ctx.shadowBlur = codeNamePulse;
             ctx.font = 'bold 38px "Courier New", monospace';
             ctx.fillText(mission.codeName ?? 'CLASSIFIED', cx, 130);
 
@@ -353,7 +360,7 @@ window.SeaWolfRendererScreens = (() => {
             ctx.shadowColor = '#FFD700';
             ctx.shadowBlur  = 8;
             ctx.font = 'bold 13px "Courier New", monospace';
-            ctx.fillText('\u2500\u2500 OBJECTIVES \u2500\u2500', cx, objY + 24);
+            ctx.fillText('── OBJECTIVES ──', cx, objY + 24);
 
             ctx.font      = '13px "Courier New", monospace';
             ctx.shadowBlur = 0;
@@ -363,14 +370,14 @@ window.SeaWolfRendererScreens = (() => {
                 ? (mission.targetTypes ?? []).join(', ')
                 : 'Any ship type';
             ctx.fillStyle = '#aaffaa';
-            ctx.fillText(`Sink ${mission.requiredSinks ?? '?'} \u2014 Target: ${targets}`, cx, objLine);
+            ctx.fillText(`Sink ${mission.requiredSinks ?? '?'} — Target: ${targets}`, cx, objLine);
 
             if ((mission.torpedoBudget ?? 0) > 0) {
                 objLine += 22;
                 ctx.fillStyle   = '#FFAA44';
                 ctx.shadowColor = '#FFAA44';
                 ctx.shadowBlur  = 4;
-                ctx.fillText(`\u26a0 Torpedo budget: ${mission.torpedoBudget} shots`, cx, objLine);
+                ctx.fillText(`⚠ Torpedo budget: ${mission.torpedoBudget} shots`, cx, objLine);
             }
 
             const civilianLimit = mission.maxCivilianSinks ?? -1;
@@ -380,12 +387,12 @@ window.SeaWolfRendererScreens = (() => {
                     ctx.fillStyle   = '#FF4444';
                     ctx.shadowColor = '#FF4444';
                     ctx.shadowBlur  = 8;
-                    ctx.fillText('\u26a0 Zero civilian casualties \u2014 any fishing boat sunk = MISSION FAIL', cx, objLine);
+                    ctx.fillText('⚠ Zero civilian casualties — any fishing boat sunk = MISSION FAIL', cx, objLine);
                 } else {
                     ctx.fillStyle   = '#FFAA44';
                     ctx.shadowColor = '#FFAA44';
                     ctx.shadowBlur  = 4;
-                    ctx.fillText(`\u26a0 Max civilian sinks: ${civilianLimit}`, cx, objLine);
+                    ctx.fillText(`⚠ Max civilian sinks: ${civilianLimit}`, cx, objLine);
                 }
             }
 
@@ -414,6 +421,13 @@ window.SeaWolfRendererScreens = (() => {
 
             const missionIdx = (s.campaignMission ?? 1) - 1;
             const mission    = (s.campaignMissions ?? [])[missionIdx] ?? {};
+            // This same status/screen is used for both a completed AND a
+            // failed mission (see GameEngine.CompleteMission /
+            // HandleCampaignOrArcadeFail) — campaignMissionFailed is what
+            // tells them apart. Previously this function ignored the flag
+            // entirely and always drew the success banner, so running out
+            // of lives looked identical to winning.
+            const failed = !!s.campaignMissionFailed;
 
             ctx.save();
             ctx.fillStyle = 'rgba(0,0,0,0.80)';
@@ -421,11 +435,12 @@ window.SeaWolfRendererScreens = (() => {
             ctx.textAlign = 'center';
 
             // Header
-            ctx.fillStyle   = '#00FF88';
-            ctx.shadowColor = '#00FF88';
-            ctx.shadowBlur  = 24;
+            const headerPulse = 24 + Math.sin(Date.now() * 0.0018) * 6;
+            ctx.fillStyle   = failed ? '#FF2200' : '#00FF88';
+            ctx.shadowColor = failed ? '#FF2200' : '#00FF88';
+            ctx.shadowBlur  = headerPulse;
             ctx.font = 'bold 48px "Courier New", monospace';
-            ctx.fillText('MISSION COMPLETE', cx, cy - 100);
+            ctx.fillText(failed ? 'MISSION FAILED' : 'MISSION COMPLETE', cx, cy - 100);
 
             // Code name
             ctx.shadowBlur  = 12;
@@ -441,16 +456,23 @@ window.SeaWolfRendererScreens = (() => {
             ctx.fillText(`Ships Sunk: ${s.campaignSinks ?? 0} / ${mission.requiredSinks ?? '?'}`, cx, cy + 12);
             ctx.fillText(`Score: ${s.score ?? 0}`, cx, cy + 38);
 
-            // Lives
-            ctx.fillStyle   = '#00CCFF';
-            ctx.shadowColor = '#00CCFF';
-            ctx.shadowBlur  = 6;
-            ctx.fillText(`Lives Remaining: ${s.campaignLives ?? 0}`, cx, cy + 64);
+            // Lives / outcome line
+            if (failed) {
+                ctx.fillStyle   = '#FF6666';
+                ctx.shadowColor = '#FF6666';
+                ctx.shadowBlur  = 6;
+                ctx.fillText('OUT OF LIVES — RETURNING TO BASE', cx, cy + 64);
+            } else {
+                ctx.fillStyle   = '#00CCFF';
+                ctx.shadowColor = '#00CCFF';
+                ctx.shadowBlur  = 6;
+                ctx.fillText(`Lives Remaining: ${s.campaignLives ?? 0}`, cx, cy + 64);
+            }
 
             // Blinking prompt
             if (Math.floor(Date.now() / 600) % 2 === 0) {
-                ctx.fillStyle   = '#00FF00';
-                ctx.shadowColor = '#00FF00';
+                ctx.fillStyle   = failed ? '#FF4444' : '#00FF00';
+                ctx.shadowColor = failed ? '#FF4444' : '#00FF00';
                 ctx.shadowBlur  = 10;
                 ctx.font = 'bold 15px "Courier New", monospace';
                 ctx.fillText('[ CLICK OR PRESS SPACE TO CONTINUE ]', cx, cy + 116);
@@ -473,10 +495,12 @@ window.SeaWolfRendererScreens = (() => {
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.textAlign = 'center';
 
-            // Title
+            // Title — a livelier, faster pulse than other screens since this
+            // is the biggest win state in the game.
+            const titlePulse = 28 + Math.sin(Date.now() * 0.0025) * 10;
             ctx.fillStyle   = '#FFD700';
             ctx.shadowColor = '#FFD700';
-            ctx.shadowBlur  = 28;
+            ctx.shadowBlur  = titlePulse;
             ctx.font = 'bold 52px "Courier New", monospace';
             ctx.fillText('CAMPAIGN COMPLETE', cx, cy - 110);
 
@@ -500,7 +524,7 @@ window.SeaWolfRendererScreens = (() => {
                 ctx.shadowColor = '#FFD700';
                 ctx.shadowBlur  = 14;
                 ctx.font = 'bold 17px "Courier New", monospace';
-                ctx.fillText('\u2605  NEW HIGH SCORE!  \u2605', cx, cy + 24);
+                ctx.fillText('★  NEW HIGH SCORE!  ★', cx, cy + 24);
             } else if (highScore > 0) {
                 ctx.fillStyle  = '#888';
                 ctx.shadowBlur = 0;
@@ -569,6 +593,7 @@ window.SeaWolfRendererScreens = (() => {
         ctx.shadowBlur = 0;
         const startY = canvas.height / 2 + 18;
         const rowH   = 32;
+        const sinceShown = Date.now() - _highScoreShownAt;
 
         if (entries.length === 0) {
             ctx.fillStyle = '#555';
@@ -588,24 +613,34 @@ window.SeaWolfRendererScreens = (() => {
                 const isTop = i === 0;
                 const rankColor = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#cd7f32' : '#559955';
 
+                // Staggered cascade reveal — each row fades/slides in a beat
+                // after the one above it, instead of the whole table
+                // popping in at once.
+                const rowProgress = Math.max(0, Math.min(1, (sinceShown - i * 60) / 220));
+                if (rowProgress <= 0) continue;
+                ctx.save();
+                ctx.globalAlpha = rowProgress;
+                const slideX = (1 - rowProgress) * -18;
+
                 ctx.textAlign = 'right';
                 ctx.fillStyle = rankColor;
                 ctx.font = isTop ? 'bold 16px "Courier New", monospace' : '15px "Courier New", monospace';
-                ctx.fillText(`${i + 1}.`, cx - 220, y);
+                ctx.fillText(`${i + 1}.`, cx - 220 + slideX, y);
 
                 ctx.textAlign = 'left';
                 ctx.fillStyle = isTop ? '#FFD700' : '#00EE00';
                 const nameStr = (e.name ?? '???').substring(0, 12).padEnd(12);
-                ctx.fillText(nameStr, cx - 205, y);
+                ctx.fillText(nameStr, cx - 205 + slideX, y);
 
                 ctx.textAlign = 'right';
                 ctx.fillStyle = isTop ? '#FFD700' : '#aaffaa';
-                ctx.fillText(String(e.score).padStart(7), cx + 60, y);
+                ctx.fillText(String(e.score).padStart(7), cx + 60 + slideX, y);
 
                 ctx.textAlign = 'left';
                 ctx.fillStyle = e.mode === 'Campaign' ? '#88aaff' : '#888';
                 ctx.font = '12px "Courier New", monospace';
-                ctx.fillText(e.mode === 'Campaign' ? 'CAMPAIGN' : 'ARCADE', cx + 76, y);
+                ctx.fillText(e.mode === 'Campaign' ? 'CAMPAIGN' : 'ARCADE', cx + 76 + slideX, y);
+                ctx.restore();
             }
         }
         ctx.textAlign = 'center';

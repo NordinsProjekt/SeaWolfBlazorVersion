@@ -107,14 +107,29 @@ public sealed class GameSimulator
             InjectSinks(type, needed);
     }
 
-    /// <summary>Forces <paramref name="count"/> ships to escape (used to test failure paths).</summary>
-    public void InjectEscapes(int count)
+    /// <summary>
+    /// Forces <paramref name="count"/> ships to escape (used to test failure
+    /// paths). Mirrors GameEngine.HandleEscape: in Campaign mode, a life is
+    /// only lost if the escaped type counts toward the current mission's
+    /// objective. Defaults to the mission's own first target type so
+    /// existing "escape costs a life" tests don't need to know mission
+    /// internals; pass an explicit non-objective <paramref name="type"/> to
+    /// test that those escapes are free.
+    /// </summary>
+    public void InjectEscapes(int count, ShipType? type = null)
     {
+        var mission = CampaignManager.GetMission(State.CampaignMission);
+        var effectiveType = type ?? (mission.Objective.TargetTypes.Count > 0
+            ? mission.Objective.TargetTypes[0]
+            : ShipType.Destroyer);
+        bool costsLife = State.Mode == GameMode.Campaign
+            && CampaignManager.IsObjectiveType(mission, effectiveType);
+
         for (int i = 0; i < count; i++)
         {
             State.ShipsEscaped++;
             State.ComboCount = 0;
-            if (State.Mode == GameMode.Campaign)
+            if (costsLife)
                 State.CampaignLives--;
         }
     }
@@ -130,19 +145,25 @@ public sealed class GameSimulator
     // ── Wave helpers ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Clears all ships and marks the wave as fully spawned so the engine's
-    /// CheckWaveClear fires on the next Update call.
+    /// Clears all ships currently on screen and marks the wave as fully
+    /// spawned, then runs one Update. In Arcade mode this is what makes
+    /// CheckWaveClear fire (→ WaveClear). In Campaign mode there's no
+    /// per-wave batch to exhaust any more — this just clears the board, so
+    /// if the mission objective is already satisfied it completes
+    /// immediately, and otherwise play just continues (more ships keep
+    /// spawning).
     /// </summary>
     public void ForceWaveClear()
     {
         State.ShipsSpawnedThisWave = State.WaveTotalShips;
         State.Ships.Clear();
-        Engine.Update(FrameDt); // triggers WaveClear
+        Engine.Update(FrameDt);
     }
 
     /// <summary>
     /// Waits for WaveClear status then skips the pause timer and returns once
-    /// the engine transitions away from WaveClear.
+    /// the engine transitions away from WaveClear. Arcade-only — campaign
+    /// missions never enter WaveClear (see GameEngine.UpdateCampaignObjective).
     /// </summary>
     public void SkipWaveClear()
     {

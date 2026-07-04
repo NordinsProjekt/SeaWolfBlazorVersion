@@ -11,8 +11,13 @@ namespace GameEngineE2ETests;
 public class FullPlaythroughTests
 {
     /// <summary>
-    /// Drives each mission by force-clearing waves and injecting sinks only when
-    /// needed. Verifies the engine can advance through all 6 missions to CampaignComplete.
+    /// Drives each mission with real ship spawning for a few seconds (the
+    /// actual spawn/move/escape loop, not just instant injection), then
+    /// satisfies the objective and lets the board clear. Campaign missions
+    /// are one continuous stage now (see GameEngine.UpdateCampaignObjective) —
+    /// there's no per-wave clear cycle to drive through inside a mission, so
+    /// this just verifies the engine can carry all 6 missions through to
+    /// CampaignComplete.
     /// </summary>
     [Fact]
     public void FullCampaign_SixMissions_ReachCampaignComplete()
@@ -22,57 +27,23 @@ public class FullPlaythroughTests
 
         for (int m = 1; m <= 6; m++)
         {
-            // Wait for (or assert) MissionBriefing
             sim.RunUntil(() => sim.State.Status == GameStatus.MissionBriefing, maxFrames: 100);
+            sim.AssertMission(m);
             sim.Engine.AdvanceMissionBriefing();
 
             var mission = CampaignManager.GetMission(m);
+            sim.AssertWave(mission.StartWave);
 
-            // Drive wave-by-wave through the mission.
-            // The engine may complete the mission early (objective met mid-wave),
-            // so we break out of the wave loop whenever the mission ends.
-            bool missionEnded = false;
-            for (int w = mission.StartWave; w <= mission.EndWave && !missionEnded; w++)
-            {
-                sim.RunUntil(() => sim.State.Status == GameStatus.Playing, maxFrames: 200);
-                sim.AssertWave(w);
+            // Isolate from unintercepted escapes while ships spawn naturally
+            // for a few seconds — this test is about the spawn/completion
+            // flow, not the lives mechanic (that's covered separately).
+            sim.State.CampaignLives = 9999;
+            sim.RunFor(5f);
 
-                bool isLastWave = w == mission.EndWave;
-
-                if (isLastWave)
-                {
-                    // Inject exactly enough sinks to meet the objective.
-                    // For "any-type" missions CountObjectiveSinks uses TotalShipsSunk
-                    // which accumulates across missions — subtract what's already counted.
-                    int alreadyCounted = CampaignManager.CountObjectiveSinks(
-                        mission, sim.State.TotalShipsSunk, sim.State.SinksByTypeDict());
-                    int needed = mission.Objective.RequiredSinks - alreadyCounted;
-                    if (needed > 0)
-                    {
-                        var type = mission.Objective.TargetTypes.Count > 0
-                            ? mission.Objective.TargetTypes[0]
-                            : ShipType.Destroyer;
-                        sim.InjectSinks(type, needed);
-                    }
-
-                    sim.ForceWaveClear(); // → WaveClear
-                    sim.RunFor(GameState.WaveClearPause + 0.1f);
-                }
-                else
-                {
-                    sim.ForceWaveClear();
-
-                    // UpdateWaveClear runs during RunFor and may call CompleteMission
-                    // early (e.g. objective already met). Check for that before proceeding.
-                    sim.RunFor(GameState.WaveClearPause + 0.1f);
-
-                    if (sim.State.Status is GameStatus.MissionComplete or GameStatus.CampaignComplete)
-                    {
-                        missionEnded = true;
-                    }
-                    // else engine transitioned to Playing for the next wave — continue loop
-                }
-            }
+            sim.InjectObjectiveSinks();
+            sim.Engine.Update(GameSimulator.FrameDtPublic); // stops further spawning
+            sim.ForceWaveClear();                           // clears the board → completes
+            sim.RunFor(GameState.WaveClearPause + 0.1f);
 
             sim.RunUntil(
                 () => sim.State.Status is GameStatus.MissionComplete or GameStatus.CampaignComplete,
@@ -81,6 +52,7 @@ public class FullPlaythroughTests
             if (m < 6)
             {
                 sim.AssertStatus(GameStatus.MissionComplete);
+                Assert.False(sim.State.CampaignMissionFailed);
                 sim.Engine.AdvanceToNextMission();
             }
         }
@@ -128,7 +100,9 @@ public class FullPlaythroughTests
 
         var mission = CampaignManager.GetMission(1);
 
-        // Drain all lives
+        // Drain all lives. InjectEscapes defaults to an objective-type ship
+        // (mission 1: Destroyer/PtBoat), so every escape here still costs a
+        // life under the "only objective-type escapes cost health" rule.
         for (int i = 0; i < mission.Lives; i++)
         {
             sim.AssertStatus(GameStatus.Playing);

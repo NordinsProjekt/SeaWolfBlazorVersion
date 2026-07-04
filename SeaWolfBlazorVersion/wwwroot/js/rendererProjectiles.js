@@ -1,5 +1,13 @@
 // rendererProjectiles.js — torpedoes, explosions, floating score text
 window.SeaWolfRendererProjectiles = (() => {
+    // Flat pool of trailing bubble particles for all torpedoes combined.
+    // Not keyed by torpedo id (torpedoes don't have one) — bubbles are
+    // visually interchangeable, so we just seed new ones at each active
+    // torpedo's tail every frame and let them age independently. That also
+    // means a torpedo's last few bubbles keep drifting/fading for a moment
+    // even after it hits something and disappears from state.
+    let _bubbles = [];
+
     return {
         drawTorpedo(core, t) {
             const ctx    = core.getCtx();
@@ -32,6 +40,44 @@ window.SeaWolfRendererProjectiles = (() => {
             }
             ctx.shadowBlur = 0;
             ctx.restore();
+
+            // Seed 1-2 persisting bubbles at the tail for updateAndDrawBubbles
+            // to animate — a bit of extra depth behind the procedural wake above.
+            const speed = Math.hypot(t.vx ?? 0, t.vy ?? 0) || 1;
+            const backX = t.x - (t.vx ?? 0) / speed * (t.height / 2);
+            const backY = t.y - (t.vy ?? 0) / speed * (t.height / 2);
+            _bubbles.push({
+                x: backX + (Math.random() - 0.5) * 3,
+                y: backY + (Math.random() - 0.5) * 3,
+                vx: -(t.vx ?? 0) * 0.06 + (Math.random() - 0.5) * 6,
+                vy: -(t.vy ?? 0) * 0.06 + (Math.random() - 0.5) * 6,
+                life: 1,
+                size: 1.2 + Math.random() * 1.6
+            });
+        },
+
+        // Called once per frame from canvasRenderer (not per-torpedo) so the
+        // pool ages/draws/culls exactly once regardless of how many
+        // torpedoes are currently active.
+        updateAndDrawBubbles(core) {
+            const ctx = core.getCtx();
+            if (_bubbles.length === 0) return;
+
+            ctx.save();
+            _bubbles.forEach(b => {
+                b.x += b.vx * 0.016;
+                b.y += b.vy * 0.016;
+                b.life -= 0.06;
+                if (b.life <= 0) return;
+                ctx.globalAlpha = b.life * 0.5;
+                ctx.fillStyle = 'rgba(190,235,255,0.9)';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
+            if (_bubbles.length > 400) _bubbles = _bubbles.slice(-400); // hard safety cap
+            _bubbles = _bubbles.filter(b => b.life > 0);
         },
 
         drawExplosion(core, ex) {

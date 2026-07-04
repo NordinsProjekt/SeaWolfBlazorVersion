@@ -4,11 +4,25 @@ window.SeaWolfRendererHUD = (() => {
     // so switching tubes reads as a smooth periscope pan.
     let _visualAngleDeg = null;
 
+    // Eases the displayed score toward the real score instead of snapping,
+    // so a big multi-kill point gain "rolls up" rather than jumping — a
+    // small bit of juice on the number players look at most.
+    let _displayedScore = null;
+
     return {
         drawHUD(core, s) {
             const canvas = core.getCanvas();
             const ctx    = core.getCtx();
             const COLORS = core.getColors();
+
+            if (_displayedScore === null || s.score < _displayedScore) {
+                // First frame, or a lower score than last shown — that only
+                // happens on a fresh game, so snap instead of counting down.
+                _displayedScore = s.score;
+            } else if (s.score > _displayedScore) {
+                _displayedScore += Math.max(1, (s.score - _displayedScore) * 0.18);
+                if (_displayedScore > s.score - 0.5) _displayedScore = s.score;
+            }
 
             ctx.save();
             ctx.font = 'bold 16px "Courier New", monospace';
@@ -18,7 +32,7 @@ window.SeaWolfRendererHUD = (() => {
 
             // Top-left: score
             ctx.textAlign = 'left';
-            ctx.fillText(`SCORE: ${s.score}`, 18, 28);
+            ctx.fillText(`SCORE: ${Math.round(_displayedScore)}`, 18, 28);
             if (s.highScore > 0) {
                 ctx.font = '12px "Courier New", monospace';
                 ctx.fillStyle = COLORS.hudDim;
@@ -319,10 +333,20 @@ window.SeaWolfRendererHUD = (() => {
             ctx.fillStyle = '#aaa';
             ctx.fillText(`OBJ: ${current}/${reqSinks}`, rx, by + barH + 12);
 
-            // Lives
+            // Lives — pulses red when critically low instead of just
+            // switching to a flat colour, so running out feels urgent.
             const lifeY = by + barH + 28;
-            ctx.fillStyle = lives <= 1 ? '#FF2200' : '#aaffaa';
+            if (lives <= 1) {
+                const pulse = 0.6 + Math.sin(Date.now() * 0.012) * 0.4;
+                ctx.fillStyle = `rgba(255,${Math.round(34 + pulse * 60)},0,1)`;
+                ctx.shadowColor = '#FF2200';
+                ctx.shadowBlur  = 6 + pulse * 6;
+            } else {
+                ctx.fillStyle = '#aaffaa';
+                ctx.shadowBlur = 0;
+            }
             ctx.fillText(`LIVES: ${'♥'.repeat(Math.max(0, lives))}`, rx, lifeY);
+            ctx.shadowBlur = 0;
 
             // Torpedo budget
             if (hasBudget) {

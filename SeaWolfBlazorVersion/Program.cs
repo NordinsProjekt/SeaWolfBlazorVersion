@@ -16,7 +16,19 @@ public class Program
         builder.Services.AddScoped<HighScoreService>();
         builder.Services.AddScoped<AudioService>();
 
+        // Compress dynamically-rendered responses (the root document is
+        // rendered by MapRazorComponents, not served as a static file, so
+        // MapStaticAssets()'s build-time compression doesn't cover it).
+        // EnableForHttps is safe here: this app has no per-user reflected
+        // secrets in its responses for a BREACH-style attack to target.
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+        });
+
         var app = builder.Build();
+
+        app.UseResponseCompression();
 
         // Configure the HTTP request pipeline.
         if (!app.Environment.IsDevelopment())

@@ -27,6 +27,7 @@
     // Last known damage state per ship for audio triggers
     private readonly Dictionary<Guid, ShipDamageState> _lastDamageStates = new();
     private int _lastShipsSunk;
+    private int _lastShipsEscaped;
     private GameStatus _prevStatus = GameStatus.StartScreen;
     private bool _wasReloading;
     private bool _isSavingScore;
@@ -68,7 +69,9 @@
 
         _engine.Update(dt);
 
-        // Detect game over / campaign-complete transition → save high score once
+        // Detect game over / mission / campaign-complete transitions →
+        // play the matching one-shot fanfare (and save high score once,
+        // for the two flows that actually end a full session).
         var newStatus = _engine.State.Status;
         if (!_isSavingScore)
         {
@@ -85,9 +88,18 @@
             {
                 _prevStatus = newStatus;
                 _isSavingScore = true;
+                await AudioService.PlayCampaignCompleteAsync();
                 await PromptAndSaveScoreAsync("Campaign");
                 _engine.ReturnToStartScreen();
                 _isSavingScore = false;
+            }
+            else if (_prevStatus != GameStatus.MissionComplete && newStatus == GameStatus.MissionComplete)
+            {
+                _prevStatus = newStatus;
+                if (_engine.State.CampaignMissionFailed)
+                    await AudioService.PlayMissionFailedAsync();
+                else
+                    await AudioService.PlayMissionSuccessAsync();
             }
             else
             {
@@ -95,13 +107,13 @@
             }
         }
 
-        await CheckAudioTriggers();
+        await CheckAudioTriggers(dt);
 
         var json = JsonSerializer.Serialize(_engine.State, _jsonOptions);
         await JS.InvokeVoidAsync("SeaWolfRenderer.renderFrame", json);
     }
 
-    private async Task CheckAudioTriggers()
+    private async Task CheckAudioTriggers(float dt)
     {
         foreach (var ship in _engine.State.Ships)
         {
@@ -134,6 +146,19 @@
             _lastShipsSunk = _engine.State.ShipsSunkThisWave;
             await AudioService.PlayWaveClearAsync();
         }
+
+        // Escape alarm — only on an actual increase, never on the reset
+        // back to 0 that happens when a new game/mission starts.
+        if (_engine.State.ShipsEscaped > _lastShipsEscaped)
+            await AudioService.PlayEscapeAlarmAsync();
+        _lastShipsEscaped = _engine.State.ShipsEscaped;
+
+        // Sonar ping ambience — atmospheric flavour while actually playing.
+        // A small per-tick probability keeps this to roughly one ping every
+        // ~6 seconds on average without needing a separate timer/interval
+        // to start, stop, and clean up alongside the game loop.
+        if (_engine.State.Status == GameStatus.Playing && Random.Shared.NextDouble() < dt / 6.0)
+            await AudioService.PlaySonarPingAsync();
     }
 
     [JSInvokable]
@@ -147,6 +172,10 @@
     [JSInvokable]
     public async Task OnClick(double x, double y)
     {
+        // Any click is a user gesture — safe to (idempotently) kick off the
+        // background music the first time this fires.
+        await AudioService.EnsureMusicStartedAsync();
+
         var status = _engine.State.Status;
 
         if (status == GameStatus.StartScreen)
@@ -155,17 +184,20 @@
 
             if (HitTest(btns, "highScores", x, y))
             {
+                await AudioService.PlayUIClickAsync();
                 await JS.InvokeVoidAsync("SeaWolfHighScore.toggleHighScores");
                 return;
             }
             if (HitTest(btns, "arcade", x, y))
             {
+                await AudioService.PlayUIClickAsync();
                 _engine.State.HighScore = await HighScoreService.LoadAsync();
                 _engine.StartGame();
                 return;
             }
             if (HitTest(btns, "campaign", x, y))
             {
+                await AudioService.PlayUIClickAsync();
                 _engine.State.HighScore = await HighScoreService.LoadAsync();
                 _engine.StartCampaign();
                 return;
@@ -178,12 +210,14 @@
 
         if (status == GameStatus.MissionBriefing)
         {
+            await AudioService.PlayUIClickAsync();
             _engine.AdvanceMissionBriefing();
             return;
         }
 
         if (status == GameStatus.MissionComplete || status == GameStatus.CampaignComplete)
         {
+            await AudioService.PlayUIClickAsync();
             _engine.AdvanceToNextMission();
             return;
         }
@@ -198,9 +232,12 @@
     [JSInvokable]
     public async Task OnKeyDown(string key)
     {
+        await AudioService.EnsureMusicStartedAsync();
+
         if (key == "p" || key == "P")
         {
             _engine.TogglePause();
+            await AudioService.SetMusicDuckedAsync(_engine.State.Status == GameStatus.Paused);
             return;
         }
 
@@ -209,11 +246,13 @@
             var status = _engine.State.Status;
             if (status == GameStatus.MissionBriefing)
             {
+                await AudioService.PlayUIClickAsync();
                 _engine.AdvanceMissionBriefing();
                 return;
             }
             if (status == GameStatus.MissionComplete || status == GameStatus.CampaignComplete)
             {
+                await AudioService.PlayUIClickAsync();
                 _engine.AdvanceToNextMission();
                 return;
             }
@@ -223,6 +262,7 @@
         {
             if (_engine.State.Status == GameStatus.StartScreen)
             {
+                await AudioService.PlayUIClickAsync();
                 _engine.State.HighScore = await HighScoreService.LoadAsync();
                 _engine.StartCampaign();
                 return;
@@ -233,6 +273,7 @@
         {
             if (_engine.State.Status == GameStatus.StartScreen)
             {
+                await AudioService.PlayUIClickAsync();
                 await JS.InvokeVoidAsync("SeaWolfHighScore.toggleHighScores");
                 return;
             }

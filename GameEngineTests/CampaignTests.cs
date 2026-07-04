@@ -235,7 +235,8 @@ public class CampaignTests
 
         int initialLives = engine.State.CampaignLives;
 
-        // Add a ship that has already escaped off-screen
+        // Add a ship that has already escaped off-screen (Destroyer is one
+        // of mission 1's objective types, so this must cost a life)
         engine.State.Ships.Add(new Ship
         {
             X = 1400, Y = 200, Width = 100, Height = 40,
@@ -244,6 +245,31 @@ public class CampaignTests
         engine.Update(0.016f); // HandleEscape fires → CampaignLives--
 
         Assert.Equal(initialLives - 1, engine.State.CampaignLives);
+    }
+
+    [Fact]
+    public void Campaign_NonObjectiveShipType_Escaping_DoesNotCostALife()
+    {
+        var engine = new GameEngine.Engine.GameEngine();
+        engine.StartCampaign(); // Mission 1 objective: Destroyer + PtBoat only
+        engine.AdvanceMissionBriefing();
+
+        int initialLives = engine.State.CampaignLives;
+
+        // Tanker is NOT one of mission 1's target types — letting one
+        // escape must not cost a life (this is the exact scenario reported:
+        // a tanker escaping during a "destroy 4 destroyers" mission was
+        // wrongly costing health).
+        engine.State.Ships.Add(new Ship
+        {
+            X = 1400, Y = 200, Width = 185, Height = 60,
+            Direction = 1, BasePoints = 400, Type = ShipType.Tanker
+        });
+        engine.Update(0.016f);
+
+        Assert.Equal(initialLives, engine.State.CampaignLives);
+        Assert.Equal(GameStatus.Playing, engine.State.Status);
+        Assert.Equal(1, engine.State.ShipsEscaped); // still tracked for stats, just no life lost
     }
 
     [Fact]
@@ -331,10 +357,10 @@ public class CampaignTests
         Assert.Equal(3, d[ShipType.Cruiser]);
     }
 
-    // ── Objective completion ────────────────────────────────────────────────
+    // ── Objective completion ─────────────────────────────────────────────────
 
     [Fact]
-    public void Campaign_ObjectiveSinks_AreTracked_MidWave()
+    public void Campaign_ObjectiveMet_StopsSpawningNewShips()
     {
         var engine = new GameEngine.Engine.GameEngine();
         engine.StartCampaign();
@@ -353,14 +379,21 @@ public class CampaignTests
             engine.State.TotalShipsSunk += count;
         }
 
+        // First tick: CampaignSinks catches up to the injected total. The
+        // mission is a single continuous stage now (no fixed ship quota),
+        // so the only thing that should change is that spawning stops.
+        engine.Update(0.016f);
+        Assert.Equal(required, engine.State.CampaignSinks);
+        Assert.Equal(GameStatus.Playing, engine.State.Status);
+
+        int spawnedAfterObjectiveMet = engine.State.ShipsSpawnedThisWave;
+
+        // Force past the spawn-interval gate so the only thing that could
+        // still block a spawn is the objective-met check itself.
+        engine.State.SpawnTimer = 999f;
         engine.Update(0.016f);
 
-        // Objective sinks are tracked correctly
-        Assert.Equal(required, engine.State.CampaignSinks);
-        // Spawn is capped so no new ships will be queued — remaining ships clear naturally
-        Assert.Equal(engine.State.ShipsSpawnedThisWave, engine.State.WaveTotalShips);
-        // Status stays Playing until the screen is empty
-        Assert.Equal(GameStatus.Playing, engine.State.Status);
+        Assert.Equal(spawnedAfterObjectiveMet, engine.State.ShipsSpawnedThisWave);
     }
 
     [Fact]
@@ -372,30 +405,28 @@ public class CampaignTests
 
         var mission = CampaignManager.GetMission(1);
 
-        // Put some ships and torpedoes on screen
+        // Put a ship and a torpedo on screen
         engine.State.Ships.Add(new Ship { X = 300, Y = 400, Active = true });
         engine.State.Torpedoes.Add(new Torpedo { X = 300, Y = 200, Active = true });
 
-        // Satisfy the objective
+        // Satisfy the objective — spawning stops, but the ship already on
+        // screen must still resolve before the mission completes.
         foreach (var type in mission.Objective.TargetTypes)
             engine.State.SinksByType[(int)type] = mission.Objective.RequiredSinks;
         engine.State.TotalShipsSunk = mission.Objective.RequiredSinks;
 
-        // Objective met — spawn is capped, ships clear naturally (not instantly wiped)
         engine.Update(0.016f);
-        Assert.Equal(engine.State.ShipsSpawnedThisWave, engine.State.WaveTotalShips);
         Assert.Equal(GameStatus.Playing, engine.State.Status);
 
-        // Simulate all remaining ships leaving the screen
+        // Simulate the remaining ship leaving the screen — the mission
+        // completes immediately on the next tick, with no wave-clear
+        // interstitial in between (campaign missions are one continuous
+        // stage; see GameEngine.UpdateCampaignObjective).
         engine.State.Ships.Clear();
-
-        // Wave-clear fires because spawn quota is met and screen is empty
         engine.Update(0.016f);
-        Assert.Equal(GameStatus.WaveClear, engine.State.Status);
 
-        // After the wave-clear pause, mission completes with a clean state
-        engine.Update(GameState.WaveClearPause + 0.1f);
         Assert.Equal(GameStatus.MissionComplete, engine.State.Status);
+        Assert.False(engine.State.CampaignMissionFailed);
         Assert.Empty(engine.State.Ships);
         Assert.Empty(engine.State.Torpedoes);
     }
@@ -591,22 +622,25 @@ public class CampaignTests
     }
 
     [Fact]
-    public void Mission_ShipsPerWave_IsPreserved_OnWaveAdvance()
+    public void Campaign_WaveTier_RampsEvery_ShipsPerWave_Spawned_CappedAtEndWave()
     {
         var engine = new GameEngine.Engine.GameEngine();
         engine.StartCampaign();
         engine.AdvanceMissionBriefing();
 
-        var mission = CampaignManager.GetMission(1);
+        var mission = CampaignManager.GetMission(1); // StartWave 1, EndWave 2, ShipsPerWave 8
+        Assert.Equal(mission.StartWave, engine.State.Wave);
 
-        // Force wave-clear (not the last wave of mission 1) to advance to next wave
-        engine.State.Wave = mission.StartWave; // ensure not EndWave
-        engine.State.ShipsSpawnedThisWave = engine.State.WaveTotalShips;
-        engine.State.Ships.Clear();
-        engine.Update(0.016f); // → WaveClear
-        engine.Update(GameState.WaveClearPause + 0.1f); // → AdvanceToNextWave → Playing
+        // Give plenty of simulated time for many ships to spawn without
+        // ever meeting the objective — the wave tier should climb by one
+        // every ShipsPerWave ships spawned, but never exceed EndWave, and
+        // the mission must keep running the whole time (no pause, no
+        // early completion).
+        engine.State.CampaignLives = 9999; // isolate from the escape/lives mechanic
+        for (int i = 0; i < 4000; i++)
+            engine.Update(0.016f);
 
-        // After wave advance, WaveTotalShips must still be the mission override
-        Assert.Equal(mission.ShipsPerWave, engine.State.WaveTotalShips);
+        Assert.Equal(GameStatus.Playing, engine.State.Status);
+        Assert.Equal(mission.EndWave, engine.State.Wave);
     }
 }
